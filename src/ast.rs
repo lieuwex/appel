@@ -6,7 +6,6 @@ pub type Ratio = num_rational::Ratio<BigInt>;
 pub enum UnOp {
     Id,
     Neg,
-    Inv,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -16,6 +15,7 @@ pub enum BinOp {
     Mul,
     Div,
     Mod,
+    Pow,
 }
 
 #[derive(Clone, Debug)]
@@ -29,5 +29,9 @@ pub enum Expr {
     Atom(Atom),
     Unary(UnOp, Box<Expr>),
     Binary(Box<Expr>, BinOp, Box<Expr>),
-    Fold(BinOp, Vec<Expr>),
+    Fold(BinOp, Box<Expr>),
+    Vector(Vec<Expr>),
+    Assign(String, Box<Expr>),
+    // name, parameters, tree
+    FunDeclare(String, Vec<String>, Box<Expr>),
 }
