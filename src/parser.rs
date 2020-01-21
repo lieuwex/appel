@@ -57,9 +57,9 @@ fn p_posexp() -> Parser<BigUint> {
 }
 
 fn negative<T: 'static>(p: Parser<T>) -> Parser<T>
-        where T: std::ops::Neg + std::ops::Mul<Output = T> + From<i32> {
-    let p_sign = sym('-').opt().map(|o| if o.is_some() { -1 } else { 1 });
-    (p_sign + p).map(|(s, v)| T::from(s) * v)
+        where T: std::ops::Neg<Output = T> {
+    let p_sign = sym('-').opt().map(|o| o.is_some());
+    (p_sign + p).map(|(s, v)| if s { -v } else { v })
 }
 
 fn p_exp() -> Parser<BigInt> {
@@ -71,21 +71,45 @@ fn p_int() -> Parser<Atom> {
                 .collect().convert(integer_hex)
             | (p_digit().repeat(1..).collect().convert(integer_decimal) + p_posexp())
                 .map(|(b, e)| b * BigUint::from(10u32).pow(e));
-    negative(p.map(BigInt::from)).map(Atom::Int)
+    negative(p.map(BigInt::from)).map(Ratio::from).map(Atom::Rat)
 }
 
 fn p_float() -> Parser<Atom> {
-    let p = (p_digit().repeat(1..) + sym('.') + p_digit().repeat(0..) + p_exp()).collect()
-            | (p_digit().repeat(0..) + sym('.') + p_digit().repeat(1..) + p_exp()).collect();
+    let p = (p_digit().repeat(1..) + sym('.') + p_digit().repeat(0..) + p_exp())
+            | (p_digit().repeat(0..) + sym('.') + p_digit().repeat(1..) + p_exp());
 
-    (sym('-').repeat(0..2) + p).collect()
-        .convert(|s| s.iter().collect::<String>().parse::<f64>())
-        .map(Atom::Float)
+    let p_ratio = p.convert(|(((pre, _), post), exp)| {
+        let ten = BigUint::from(10u32);
+        let base_num = integer_decimal(&pre)? * ten.pow(post.len()) + integer_decimal(&post)?;
+        let base_rat = Ratio::from(BigInt::from(base_num));
+        Ok(match exp.to_biguint() {
+            Some(pos_exp) => {
+                base_rat * Ratio::from(BigInt::from(ten.pow(pos_exp)))
+            }
+
+            None => {
+                let exp_pow = BigInt::from(ten.pow((-exp).to_biguint().unwrap()));
+                let exp_rat = Ratio::from((BigInt::from(1), exp_pow));
+                base_rat * exp_rat
+            }
+        }) as Result<Ratio, num_bigint::ParseBigIntError>
+    });
+
+    negative(p_ratio).map(Atom::Rat)
 }
 
-// fn p_atom() -> Parser<Atom> {
-//     p_int() | p_float() | p_var()
-// }
+fn p_var() -> Parser<Atom> {
+    (
+        is_a(|c: char| c.is_alphabetic() || c == '_') +
+        is_a(|c: char| c.is_alphanumeric() || c == '_').repeat(0..)
+    ).collect()
+        .map(|s| s.iter().collect::<String>())
+        .map(Atom::Ref)
+}
+
+fn p_atom() -> Parser<Atom> {
+    p_int() | p_float() | p_var()
+}
 
 // fn p_expression() -> Parser<Expr> {
 

@@ -1,5 +1,7 @@
 use num_bigint::BigInt;
 
+pub type Ratio = num_rational::Ratio<BigInt>;
+
 pub enum UnOp {
     Id,
     Neg,
@@ -15,15 +17,13 @@ pub enum BinOp {
 }
 
 pub enum Atom {
-    Rat(BigInt, BigInt),
-    Float(f64),
-    Var(String),
+    Rat(Ratio),
+    Ref(String),
 }
 
 pub enum Expr {
     Atom(Atom),
-    Fold(BinOp, Vec<Expr>),
-    Map(UnOp, Vec<Expr>),
-    Binary(Box<Expr>, BinOp, Box<Expr>),
     Unary(UnOp, Box<Expr>),
+    Binary(Box<Expr>, BinOp, Box<Expr>),
+    Fold(BinOp, Vec<Expr>),
 }

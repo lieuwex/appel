@@ -6,5 +6,6 @@ edition = "2018"
 
 [dependencies]
 pom = "^3.1"
-num-bigint = "^0.2.5"
+num-bigint = ""
+num-rational = "^0.2.3"
 num-traits = "^0.2.11"  # Note: synchronised with the num-bigint dependency
