@@ -1,9 +1,17 @@
 use num_bigint::{BigInt, BigUint};
-use num_traits::Pow;
+use num_traits::{Pow, One, Zero};
 use pom::{self, parser::*};
 use crate::ast::*;
 
-type Parser<T> = pom::Parser<char, T>;
+type Parser<'a, T> = pom::parser::Parser<'a, char, T>;
+
+fn whitespace<'a>() -> Parser<'a, ()> {
+    is_a(|c: char| c.is_ascii_whitespace()).repeat(0..).discard()
+}
+
+fn symbol<'a, T: 'static>(p: Parser<'a, T>) -> Parser<'a, T> {
+    whitespace() * p
+}
 
 fn integer_decimal(s: &[char]) -> Result<BigUint, num_bigint::ParseBigIntError> {
     s.iter().collect::<String>().parse::<BigUint>()
@@ -41,32 +49,34 @@ fn integer_hex(s: &[char]) -> Result<BigUint, &str> {
     Ok(BigUint::from_bytes_be(&bytes))
 }
 
-fn p_hexdigit() -> Parser<char> {
+fn p_hexdigit<'a>() -> Parser<'a, char> {
     is_a(|c: char| {
         let c = c.to_ascii_lowercase();
         ('0' <= c && c <= '9') || ('a' <= c && c <= 'f')
     })
 }
 
-fn p_digit() -> Parser<char> {
+fn p_digit<'a>() -> Parser<'a, char> {
     is_a(|c| '0' <= c && c <= '9')
 }
 
-fn p_posexp() -> Parser<BigUint> {
+fn p_posexp<'a>() -> Parser<'a, BigUint> {
     sym('e') * p_digit().repeat(1..).collect().convert(integer_decimal)
+        | empty().map(|_| Zero::zero())
 }
 
-fn negative<T: 'static>(p: Parser<T>) -> Parser<T>
+fn negative<'a, T: 'static>(p: Parser<'a, T>) -> Parser<'a, T>
         where T: std::ops::Neg<Output = T> {
     let p_sign = sym('-').opt().map(|o| o.is_some());
     (p_sign + p).map(|(s, v)| if s { -v } else { v })
 }
 
-fn p_exp() -> Parser<BigInt> {
+fn p_exp<'a>() -> Parser<'a, BigInt> {
     sym('e') * negative(p_digit().repeat(1..).collect().convert(integer_decimal).map(BigInt::from))
+        | empty().map(|_| Zero::zero())
 }
 
-fn p_int() -> Parser<Atom> {
+fn p_int<'a>() -> Parser<'a, Atom> {
     let p = (tag("0x") * p_hexdigit().repeat(1..))
                 .collect().convert(integer_hex)
             | (p_digit().repeat(1..).collect().convert(integer_decimal) + p_posexp())
@@ -74,14 +84,15 @@ fn p_int() -> Parser<Atom> {
     negative(p.map(BigInt::from)).map(Ratio::from).map(Atom::Rat)
 }
 
-fn p_float() -> Parser<Atom> {
+fn p_float<'a>() -> Parser<'a, Atom> {
     let p = (p_digit().repeat(1..) + sym('.') + p_digit().repeat(0..) + p_exp())
             | (p_digit().repeat(0..) + sym('.') + p_digit().repeat(1..) + p_exp());
 
     let p_ratio = p.convert(|(((pre, _), post), exp)| {
         let ten = BigUint::from(10u32);
-        let base_num = integer_decimal(&pre)? * ten.pow(post.len()) + integer_decimal(&post)?;
-        let base_rat = Ratio::from(BigInt::from(base_num));
+        let comma_exp = ten.pow(post.len());
+        let base_num = integer_decimal(&pre)? * &comma_exp + integer_decimal(&post)?;
+        let base_rat = Ratio::from((BigInt::from(base_num), BigInt::from(comma_exp)));
         Ok(match exp.to_biguint() {
             Some(pos_exp) => {
                 base_rat * Ratio::from(BigInt::from(ten.pow(pos_exp)))
@@ -89,7 +100,7 @@ fn p_float() -> Parser<Atom> {
 
             None => {
                 let exp_pow = BigInt::from(ten.pow((-exp).to_biguint().unwrap()));
-                let exp_rat = Ratio::from((BigInt::from(1), exp_pow));
+                let exp_rat = Ratio::from((One::one(), exp_pow));
                 base_rat * exp_rat
             }
         }) as Result<Ratio, num_bigint::ParseBigIntError>
@@ -98,7 +109,7 @@ fn p_float() -> Parser<Atom> {
     negative(p_ratio).map(Atom::Rat)
 }
 
-fn p_var() -> Parser<Atom> {
+fn p_var<'a>() -> Parser<'a, Atom> {
     (
         is_a(|c: char| c.is_alphabetic() || c == '_') +
         is_a(|c: char| c.is_alphanumeric() || c == '_').repeat(0..)
@@ -107,10 +118,25 @@ fn p_var() -> Parser<Atom> {
         .map(Atom::Ref)
 }
 
-fn p_atom() -> Parser<Atom> {
-    p_int() | p_float() | p_var()
+fn p_atom<'a>() -> Parser<'a, Atom> {
+    p_float() | p_int() | p_var()
 }
 
-// fn p_expression() -> Parser<Expr> {
-
+// fn p_expr_toplevel<'a>() -> Parser<'a, Expr> {
+//     ()
 // }
+
+pub fn parse(source: &str) -> Result<Atom, pom::Error> {
+    let chars = source.chars().collect::<Vec<_>>();
+    let (res, num_parsed) = (p_atom() - whitespace()).parse_at(&chars, 0)?;
+
+    if num_parsed != source.len() {
+        return Err(pom::Error::Custom {
+            message: "Expected EOF".to_string(),
+            position: num_parsed,
+            inner: None
+        });
+    }
+
+    Ok(res)
+}
