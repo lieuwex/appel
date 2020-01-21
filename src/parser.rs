@@ -5,12 +5,38 @@ use crate::ast::*;
 
 type Parser<'a, T> = pom::parser::Parser<'a, char, T>;
 
+fn left_recurse<'a, APF, OPF, E, O, F>(
+    atom_p: APF,
+    op_p: OPF,
+    combine: F
+) -> Parser<'a, E>
+        where F: Fn(E, O, E) -> E,
+              APF: Fn() -> Parser<'a, E>,
+              OPF: Fn() -> Parser<'a, O>,
+              E: 'a,
+              O: 'a,
+              F: 'a {
+
+    (atom_p() + (op_p() + atom_p()).repeat(0..)).map(move |(mut expr, v)| {
+        for (op, expr2) in v {
+            expr = combine(expr, op, expr2);
+        }
+        expr
+    })
+}
+
 fn whitespace<'a>() -> Parser<'a, ()> {
     is_a(|c: char| c.is_ascii_whitespace()).repeat(0..).discard()
 }
 
-fn symbol<'a, T: 'static>(p: Parser<'a, T>) -> Parser<'a, T> {
+fn symbol<'a, T: 'a>(p: Parser<'a, T>) -> Parser<'a, T> {
     whitespace() * p
+}
+
+static OPERATOR_CHARS: &'static str = "+-*/!@#$%^&*=";
+
+fn operator<'a>(text: &'static str) -> Parser<'a, ()> {
+    (tag(text) - !(is_a(|c: char| c.is_whitespace()) | one_of(OPERATOR_CHARS))).discard()
 }
 
 fn integer_decimal(s: &[char]) -> Result<BigUint, num_bigint::ParseBigIntError> {
@@ -109,34 +135,87 @@ fn p_float<'a>() -> Parser<'a, Atom> {
     negative(p_ratio).map(Atom::Rat)
 }
 
-fn p_var<'a>() -> Parser<'a, Atom> {
+fn p_varname<'a>() -> Parser<'a, String> {
     (
-        is_a(|c: char| c.is_alphabetic() || c == '_') +
-        is_a(|c: char| c.is_alphanumeric() || c == '_').repeat(0..)
-    ).collect()
-        .map(|s| s.iter().collect::<String>())
-        .map(Atom::Ref)
+        is_a(|c: char| c.is_alphabetic() || c == '_')
+        + is_a(|c: char| c.is_alphanumeric() || c == '_').repeat(0..)
+    ).collect().map(|s| s.iter().collect::<String>())
+}
+
+fn p_var<'a>() -> Parser<'a, Atom> {
+    p_varname().map(Atom::Ref)
 }
 
 fn p_atom<'a>() -> Parser<'a, Atom> {
     p_float() | p_int() | p_var()
 }
 
-// fn p_expr_toplevel<'a>() -> Parser<'a, Expr> {
-//     ()
-// }
+/// Parenthesised expression or plain atom
+fn p_expr_0<'a>() -> Parser<'a, Expr> {
+    (symbol(operator("(")) * p_expr() - symbol(operator(")"))) | p_atom().map(Expr::Atom)
+}
 
-pub fn parse(source: &str) -> Result<Atom, pom::Error> {
-    let chars = source.chars().collect::<Vec<_>>();
-    let (res, num_parsed) = (p_atom() - whitespace()).parse_at(&chars, 0)?;
+/// Vector of atom-like things
+fn p_expr_1<'a>() -> Parser<'a, Expr> {
+    p_expr_0().repeat(1..).map(|v| Expr::Vector(v.to_vec()))
+}
 
-    if num_parsed != source.len() {
-        return Err(pom::Error::Custom {
-            message: "Expected EOF".to_string(),
-            position: num_parsed,
-            inner: None
-        });
+/// Unary operators on a vector
+fn p_expr_2<'a>() -> Parser<'a, Expr> {
+    fn p_unary<'a>() -> Parser<'a, UnOp> {
+        symbol(
+            operator("+").map(|_| UnOp::Id)
+            | operator("-").map(|_| UnOp::Neg)
+            | operator("!").map(|_| UnOp::Not)
+        )
     }
 
-    Ok(res)
+    (p_unary().repeat(0..) + p_expr_1()).map(|(ops, mut ex)| {
+        for i in (0..ops.len()).rev() {
+            ex = Expr::Unary(ops[i], Box::new(ex));
+        }
+        ex
+    })
+}
+
+/// Power (**) of unary'd vector
+fn p_expr_3<'a>() -> Parser<'a, Expr> {
+    let op_p = || symbol(operator("**")).map(|_| BinOp::Pow);
+    left_recurse(p_expr_2, op_p, |e1, op, e2| Expr::Binary(Box::new(e1), op, Box::new(e2)))
+}
+
+/// Product (*, /, %) of powers
+fn p_expr_4<'a>() -> Parser<'a, Expr> {
+    let op_p = || symbol(operator("*")).map(|_| BinOp::Mul)
+                    | symbol(operator("/")).map(|_| BinOp::Div)
+                    | symbol(operator("%")).map(|_| BinOp::Mod);
+    left_recurse(p_expr_3, op_p, |e1, op, e2| Expr::Binary(Box::new(e1), op, Box::new(e2)))
+}
+
+/// Sum (*, /) of products
+fn p_expr_5<'a>() -> Parser<'a, Expr> {
+    let op_p = || symbol(operator("+")).map(|_| BinOp::Add)
+                    | symbol(operator("-")).map(|_| BinOp::Sub);
+    left_recurse(p_expr_4, op_p, |e1, op, e2| Expr::Binary(Box::new(e1), op, Box::new(e2)))
+}
+
+// /// Fold of sums
+// fn p_expr_fold<'a>() -> Parser<'a, Expr> {
+// }
+
+// fn p_expr_fn<'a>() -> Parser<'a, Expr> {
+//     (symbol(tag("fn")) * symbol(p_varname())
+//         + symbol(p_varname()).repeat(1..) - symbol(operator("="))
+//         + p_expr()
+//     ).map(|((fnname, args), body)| Expr::FunDeclare(fnname, args, Box::new(body)))
+// }
+
+fn p_expr<'a>() -> Parser<'a, Expr> {
+    p_expr_5()
+}
+
+pub fn parse(source: &str) -> Result<Expr, pom::Error> {
+    let chars = source.chars().collect::<Vec<_>>();
+    let res = (p_expr() - whitespace() - end()).parse(&chars);
+    res
 }
