@@ -3,18 +3,21 @@ use std::ops::Neg;
 
 use crate::ast::*;
 
+#[derive(Clone, Debug)]
 pub struct Function {
     params: Vec<String>,
     expr: Expr,
 }
 
-pub enum Variable {
+#[derive(Clone, Debug)]
+pub enum Value {
     Matrix(Matrix),
     Function(Function),
 }
 
+#[derive(Clone)]
 pub struct Executor {
-    variables: HashMap<String, Variable>,
+    variables: HashMap<String, Value>,
 }
 
 #[derive(Clone, Debug)]
@@ -46,6 +49,13 @@ impl From<Ratio> for Matrix {
     }
 }
 
+fn expect_matrix(val: Value) -> Matrix {
+    match val {
+        Value::Matrix(m) => m,
+        Value::Function(_) => panic!(),
+    }
+}
+
 impl Executor {
     pub fn new() -> Self {
         Self {
@@ -53,14 +63,14 @@ impl Executor {
         }
     }
 
-    fn execute_unary(&mut self, op: UnOp, expr: Expr) -> Result<Option<Matrix>, String> {
+    fn execute_unary(&mut self, op: UnOp, expr: Expr) -> Result<Option<Value>, String> {
         match op {
             UnOp::Id => self.execute_expr(expr),
             UnOp::Neg => {
                 let res = self.execute_expr(expr)?;
                 let val = match res {
                     None => return Ok(None),
-                    Some(x) => x,
+                    Some(x) => expect_matrix(x),
                 };
 
                 let values = val.values.iter().map(|x| x.neg()).collect();
@@ -68,15 +78,15 @@ impl Executor {
                     values: values,
                     shape: val.shape,
                 };
-                Ok(Some(new))
+                Ok(Some(Value::Matrix(new)))
             }
         }
     }
 
-    fn execute_binary(&mut self, op: BinOp, a: Expr, b: Expr) -> Result<Option<Matrix>, String> {
+    fn execute_binary(&mut self, op: BinOp, a: Expr, b: Expr) -> Result<Option<Value>, String> {
         let apply = |f: &dyn Fn(&Ratio, &Ratio) -> Ratio| {
-            let a_res = self.execute_expr(a)?.unwrap();
-            let b_res = self.execute_expr(b)?.unwrap();
+            let a_res = expect_matrix(self.execute_expr(a)?.unwrap());
+            let b_res = expect_matrix(self.execute_expr(b)?.unwrap());
 
             if a_res.shape == b_res.shape {
                 let values = a_res
@@ -86,10 +96,11 @@ impl Executor {
                     .map(|(a, b)| f(&a, &b))
                     .collect();
 
-                return Ok(Some(Matrix {
+                let matrix = Matrix {
                     values,
                     shape: a_res.shape,
-                }));
+                };
+                return Ok(Some(Value::Matrix(matrix)));
             }
 
             if !a_res.is_scalar() && b_res.is_scalar() {
@@ -114,7 +125,7 @@ impl Executor {
                 shape: non_scalar.shape,
             };
 
-            Ok(Some(matrix))
+            Ok(Some(Value::Matrix(matrix)))
         };
 
         // (a/b)^(c/d) = (\sqrt d {a^c}) / (\sqrt d {b ^c})
@@ -125,19 +136,19 @@ impl Executor {
             BinOp::Mul => apply(&|a, b| a * b),
             BinOp::Div => apply(&|a, b| a / b),
             BinOp::Mod => apply(&|a, b| a % b),
-            BinOp::Pow => apply(&|_, _| todo!())
+            BinOp::Pow => apply(&|_, _| todo!()),
         }
     }
 
-    fn execute_fold(&mut self, op: BinOp, expr: Expr) -> Result<Option<Matrix>, String> {
-        let matrix = self.execute_expr(expr)?.unwrap();
+    fn execute_fold(&mut self, op: BinOp, expr: Expr) -> Result<Option<Value>, String> {
+        let matrix = expect_matrix(self.execute_expr(expr)?.unwrap());
 
         let apply = |f: &dyn Fn(&Ratio, &Ratio) -> Ratio| {
             let mut curr = matrix.values[0].clone();
             for val in matrix.values.iter().skip(1) {
                 curr = f(&curr, &val);
             }
-            Ok(Some(Matrix::from(curr)))
+            Ok(Some(Value::Matrix(Matrix::from(curr))))
         };
 
         match op {
@@ -146,23 +157,26 @@ impl Executor {
             BinOp::Mul => apply(&|a, b| a * b),
             BinOp::Div => apply(&|a, b| a / b),
             BinOp::Mod => apply(&|a, b| a % b),
-            BinOp::Pow => apply(&|_, _| todo!())
+            BinOp::Pow => apply(&|_, _| todo!()),
         }
     }
 
-    // TODO: call functions
-
-    pub fn execute_expr(&mut self, node: Expr) -> Result<Option<Matrix>, String> {
-        macro_rules! check_var_exists {
+    pub fn execute_expr(&mut self, node: Expr) -> Result<Option<Value>, String> {
+        macro_rules! err_var_exists {
             ($var:expr) => {
                 if self.variables.contains_key(&$var) {
                     return Err(format!("variable {} already exists", $var));
                 }
             };
         }
+        macro_rules! ok_matrix {
+            ($var:expr) => {
+                Ok(Some(Value::Matrix(Matrix::from($var))))
+            };
+        }
 
         return match node {
-            Expr::Atom(Atom::Rat(v)) => Ok(Some(Matrix::from(v))),
+            Expr::Atom(Atom::Rat(v)) => ok_matrix!(v),
             Expr::Atom(Atom::Ref(s)) => {
                 let var = match self.variables.get(&s) {
                     None => return Err(String::from("variable not found")),
@@ -170,20 +184,36 @@ impl Executor {
                 };
 
                 match var {
-                    Variable::Matrix(m) => Ok(Some(m.clone())),
-                    Variable::Function(_) => todo!(),
+                    Value::Matrix(m) => ok_matrix!(m.clone()),
+                    Value::Function(f) => Ok(Some(Value::Function(f.clone()))),
                 }
-            },
+            }
             Expr::Vector(mut v) => {
-                // TODO
-                let values: Vec<_> = v
+                let mut expressions: Vec<_> = v
                     .drain(..)
-                    .map(|e| self.execute_expr(e).unwrap().unwrap().scalar().unwrap())
+                    .map(|e| self.execute_expr(e).unwrap().unwrap())
                     .collect();
-                let shape = vec![values.len()];
 
-                let m = Matrix { values, shape };
-                Ok(Some(m))
+                match expressions[0].clone() {
+                    Value::Function(f) => {
+                        let mut ctx = self.clone();
+                        for (param, expr) in f.params.iter().zip(expressions.drain(..).skip(1)) {
+                            ctx.variables.insert(param.to_string(), expr);
+                        }
+                        ctx.execute_expr(f.expr)
+                    }
+
+                    Value::Matrix(_) => {
+                        let values: Vec<_> = expressions
+                            .drain(..)
+                            .map(|e| expect_matrix(e).scalar().unwrap())
+                            .collect();
+                        let shape = vec![values.len()];
+
+                        let m = Matrix { values, shape };
+                        Ok(Some(Value::Matrix(m)))
+                    }
+                }
             }
 
             Expr::Unary(op, expr) => self.execute_unary(op, *expr),
@@ -191,20 +221,19 @@ impl Executor {
             Expr::Fold(op, expr) => self.execute_fold(op, *expr),
 
             Expr::Assign(var, val) => {
-                check_var_exists!(var);
+                err_var_exists!(var);
                 let res = self.execute_expr(*val)?;
-                self.variables
-                    .insert(var, Variable::Matrix(res.clone().unwrap()));
+                self.variables.insert(var, res.clone().unwrap());
                 Ok(res)
             }
 
             Expr::FunDeclare(name, params, expr) => {
-                check_var_exists!(name);
+                err_var_exists!(name);
                 let f = Function {
                     params,
                     expr: *expr,
                 };
-                self.variables.insert(name, Variable::Function(f));
+                self.variables.insert(name, Value::Function(f));
                 Ok(None)
             }
         };
