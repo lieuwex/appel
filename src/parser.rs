@@ -5,18 +5,11 @@ use crate::ast::*;
 
 type Parser<'a, T> = pom::parser::Parser<'a, char, T>;
 
-fn left_recurse<'a, APF, OPF, E, O, F>(
-    atom_p: APF,
-    op_p: OPF,
-    combine: F
-) -> Parser<'a, E>
-        where F: Fn(E, O, E) -> E,
-              APF: Fn() -> Parser<'a, E>,
-              OPF: Fn() -> Parser<'a, O>,
-              E: 'a,
-              O: 'a,
-              F: 'a {
-
+fn left_recurse<'a, E: 'a, O: 'a>(
+    atom_p: impl Fn() -> Parser<'a, E>,
+    op_p: impl Fn() -> Parser<'a, O>,
+    combine: impl Fn(E, O, E) -> E + 'a
+) -> Parser<'a, E> {
     (atom_p() + (op_p() + atom_p()).repeat(0..)).map(move |(mut expr, v)| {
         for (op, expr2) in v {
             expr = combine(expr, op, expr2);
