@@ -3,6 +3,8 @@ use std::ops::Neg;
 
 use crate::ast::*;
 
+use num_traits::identities::{One, Zero};
+
 #[derive(Clone, Debug)]
 pub struct Function {
     params: Vec<String>,
@@ -64,22 +66,35 @@ impl Executor {
     }
 
     fn execute_unary(&mut self, op: UnOp, expr: Expr) -> Result<Option<Value>, String> {
-        match op {
-            UnOp::Id => self.execute_expr(expr),
-            UnOp::Neg => {
-                let res = self.execute_expr(expr)?;
-                let val = match res {
-                    None => return Ok(None),
-                    Some(x) => expect_matrix(x),
-                };
+        if op == UnOp::Id {
+            return self.execute_expr(expr);
+        }
 
-                let values = val.values.iter().map(|x| x.neg()).collect();
-                let new = Matrix {
-                    values: values,
-                    shape: val.shape,
-                };
-                Ok(Some(Value::Matrix(new)))
-            }
+        let for_all = |f: &dyn Fn(Ratio) -> Ratio| {
+            let res = self.execute_expr(expr)?;
+            let mut val = match res {
+                None => return Ok(None),
+                Some(x) => expect_matrix(x),
+            };
+
+            let values = val.values.drain(..).map(f).collect();
+            let new = Matrix {
+                values: values,
+                shape: val.shape,
+            };
+            Ok(Some(Value::Matrix(new)))
+        };
+
+        match op {
+            UnOp::Id => unreachable!(),
+            UnOp::Neg => for_all(&|x: Ratio| x.neg()),
+            UnOp::Not => for_all(&|x: Ratio| {
+                if x == Ratio::zero() {
+                    Ratio::one()
+                } else {
+                    Ratio::zero()
+                }
+            }),
         }
     }
 
