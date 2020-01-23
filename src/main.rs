@@ -27,7 +27,7 @@ fn main() {
 
     // add some numbers
     let res = exec.execute_expr(Expr::Fold(
-        BinOp::Add,
+        FoldOp::BinOp(BinOp::Add),
         Box::new(Expr::Vector(vec![
             parser::parse("1.5").unwrap(),
             parser::parse("3.5").unwrap(),

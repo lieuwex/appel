@@ -43,6 +43,21 @@ impl fmt::Display for BinOp {
     }
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum FoldOp {
+    BinOp(BinOp),
+    FunctionRef(String),
+}
+
+impl fmt::Display for FoldOp {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            FoldOp::BinOp(op) => write!(f, "{}", op),
+            FoldOp::FunctionRef(fun) => write!(f, "{}", fun),
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub enum Atom {
     Rat(Ratio),
@@ -55,7 +70,7 @@ pub enum Expr {
     Vector(Vec<Expr>),
     Unary(UnOp, Box<Expr>),
     Binary(Box<Expr>, BinOp, Box<Expr>),
-    Fold(BinOp, Box<Expr>),
+    Fold(FoldOp, Box<Expr>),
     Assign(String, Box<Expr>),
     // name, parameters, tree
     FunDeclare(String, Vec<String>, Box<Expr>),

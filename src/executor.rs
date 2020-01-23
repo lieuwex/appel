@@ -98,6 +98,19 @@ impl Executor {
         }
     }
 
+    fn call_function(
+        &mut self,
+        f: Function,
+        mut args: Vec<Matrix>,
+    ) -> Result<Option<Value>, String> {
+        let mut ctx = self.clone();
+        for (param, matrix) in f.params.iter().zip(args.drain(..)) {
+            ctx.variables
+                .insert(param.to_string(), Value::Matrix(matrix));
+        }
+        ctx.execute_expr(f.expr)
+    }
+
     fn execute_unary(&mut self, op: UnOp, expr: Expr) -> Result<Option<Value>, String> {
         if op == UnOp::Id {
             return self.execute_expr(expr);
@@ -188,8 +201,8 @@ impl Executor {
         }
     }
 
-    fn execute_fold(&mut self, op: BinOp, expr: Expr) -> Result<Option<Value>, String> {
-        let matrix = expect_matrix(self.execute_expr(expr)?.unwrap());
+    fn execute_fold(&mut self, op: FoldOp, expr: Expr) -> Result<Option<Value>, String> {
+        let mut matrix = expect_matrix(self.execute_expr(expr)?.unwrap());
 
         let apply = |f: &dyn Fn(&Ratio, &Ratio) -> Ratio| {
             let mut curr = matrix.values[0].clone();
@@ -200,12 +213,30 @@ impl Executor {
         };
 
         match op {
-            BinOp::Add => apply(&|a, b| a + b),
-            BinOp::Sub => apply(&|a, b| a - b),
-            BinOp::Mul => apply(&|a, b| a * b),
-            BinOp::Div => apply(&|a, b| a / b),
-            BinOp::Mod => apply(&|a, b| a % b),
-            BinOp::Pow => apply(&|_, _| todo!()),
+            FoldOp::BinOp(BinOp::Add) => apply(&|a, b| a + b),
+            FoldOp::BinOp(BinOp::Sub) => apply(&|a, b| a - b),
+            FoldOp::BinOp(BinOp::Mul) => apply(&|a, b| a * b),
+            FoldOp::BinOp(BinOp::Div) => apply(&|a, b| a / b),
+            FoldOp::BinOp(BinOp::Mod) => apply(&|a, b| a % b),
+            FoldOp::BinOp(BinOp::Pow) => apply(&|_, _| todo!()),
+
+            FoldOp::FunctionRef(f) => match self.variables.get(&f) {
+                None => return Err(String::from("variable not found")),
+                Some(v) => match v {
+                    Value::Matrix(_) => return Err(String::from("variable is a matrix")),
+                    Value::Function(_f) => {
+                        let f = _f.clone();
+
+                        if f.params.len() != 2 {
+                            return Err(String::from("function does not take 2 params"));
+                        }
+
+                        let args: Vec<Matrix> =
+                            matrix.values.drain(..).map(|v| Matrix::from(v)).collect();
+                        self.call_function(f, args)
+                    }
+                },
+            },
         }
     }
 
@@ -244,11 +275,13 @@ impl Executor {
 
                 match expressions[0].clone() {
                     Value::Function(f) => {
-                        let mut ctx = self.clone();
-                        for (param, expr) in f.params.iter().zip(expressions.drain(..).skip(1)) {
-                            ctx.variables.insert(param.to_string(), expr);
-                        }
-                        ctx.execute_expr(f.expr)
+                        let args: Vec<_> = expressions
+                            .drain(..)
+                            .skip(1)
+                            .map(|e| expect_matrix(e))
+                            .collect();
+
+                        self.call_function(f, args)
                     }
 
                     Value::Matrix(_) => {
@@ -258,8 +291,7 @@ impl Executor {
                             .collect();
                         let shape = vec![values.len()];
 
-                        let m = Matrix { values, shape };
-                        Ok(Some(Value::Matrix(m)))
+                        ok_matrix!(Matrix { values, shape })
                     }
                 }
             }
