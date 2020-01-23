@@ -145,7 +145,7 @@ fn p_atom<'a>() -> Parser<'a, Atom> {
 
 /// Parenthesised expression or plain atom
 fn p_expr_0<'a>() -> Parser<'a, Expr> {
-    (symbol(operator("(")) * p_expr() - symbol(operator(")"))) | p_atom().map(Expr::Atom)
+    (symbol(operator("(")) * call(p_expr) - symbol(operator(")"))) | p_atom().map(Expr::Atom)
 }
 
 /// Vector of atom-like things
