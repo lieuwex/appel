@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::fmt;
 use std::ops::Neg;
 
 use crate::ast::*;
@@ -17,6 +18,22 @@ pub enum Value {
     Function(Function),
 }
 
+impl fmt::Display for Value {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Value::Matrix(m) => write!(f, "{}", m),
+            Value::Function(fun) => {
+                write!(f, "fun")?;
+                for param in &fun.params {
+                    write!(f, " {}", param)?;
+                }
+
+                write!(f, "{}", fun.expr)
+            }
+        }
+    }
+}
+
 #[derive(Clone)]
 pub struct Executor {
     variables: HashMap<String, Value>,
@@ -26,6 +43,22 @@ pub struct Executor {
 pub struct Matrix {
     values: Vec<Ratio>,
     shape: Vec<usize>,
+}
+
+impl fmt::Display for Matrix {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // TODO: actually format
+
+        for (i, val) in self.values.iter().enumerate() {
+            if i > 0 {
+                write!(f, " ")?;
+            }
+
+            write!(f, "{}", val);
+        }
+
+        Ok(())
+    }
 }
 
 impl Matrix {
