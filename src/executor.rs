@@ -73,6 +73,11 @@ impl Matrix {
             None
         }
     }
+
+    pub fn make_vector(values: Vec<Ratio>) -> Self {
+        let shape = vec![values.len()];
+        Self { values, shape }
+    }
 }
 
 impl From<Ratio> for Matrix {
@@ -84,11 +89,21 @@ impl From<Ratio> for Matrix {
     }
 }
 
-fn expect_matrix(val: Value) -> Matrix {
-    match val {
-        Value::Matrix(m) => m,
-        Value::Function(_) => panic!(),
-    }
+macro_rules! expect_matrix {
+    ($v:expr) => {
+        match $v {
+            None => return Err(String::from("expected value")),
+            Some(Value::Function(_)) => {
+                return Err(String::from("expected matrix, got a function"))
+            }
+            Some(Value::Matrix(m)) => m,
+        }
+    };
+}
+macro_rules! ok_matrix {
+    ($var:expr) => {
+        Ok(Some(Value::Matrix(Matrix::from($var))))
+    };
 }
 
 impl Executor {
@@ -101,7 +116,7 @@ impl Executor {
     fn call_function(
         &mut self,
         f: Function,
-        args: impl IntoIterator<Item=Matrix>,
+        args: impl IntoIterator<Item = Matrix>,
     ) -> Result<Option<Value>, String> {
         let mut ctx = self.clone();
         for (param, matrix) in f.params.iter().zip(args) {
@@ -118,17 +133,14 @@ impl Executor {
 
         let for_all = |f: &dyn Fn(Ratio) -> Ratio| {
             let res = self.execute_expr(expr)?;
-            let mut val = match res {
-                None => return Ok(None),
-                Some(x) => expect_matrix(x),
-            };
+            let mut val = expect_matrix!(res);
 
             let values = val.values.drain(..).map(f).collect();
             let new = Matrix {
                 values: values,
                 shape: val.shape,
             };
-            Ok(Some(Value::Matrix(new)))
+            ok_matrix!(new)
         };
 
         match op {
@@ -146,8 +158,8 @@ impl Executor {
 
     fn execute_binary(&mut self, op: BinOp, a: Expr, b: Expr) -> Result<Option<Value>, String> {
         let apply = |f: &dyn Fn(&Ratio, &Ratio) -> Ratio| {
-            let a_res = expect_matrix(self.execute_expr(a)?.unwrap());
-            let b_res = expect_matrix(self.execute_expr(b)?.unwrap());
+            let a_res = expect_matrix!(self.execute_expr(a)?);
+            let b_res = expect_matrix!(self.execute_expr(b)?);
 
             if a_res.shape == b_res.shape {
                 let values = a_res
@@ -161,21 +173,22 @@ impl Executor {
                     values,
                     shape: a_res.shape,
                 };
-                return Ok(Some(Value::Matrix(matrix)));
+                return ok_matrix!(matrix);
             }
 
             if !a_res.is_scalar() && !b_res.is_scalar() {
                 return Err(String::from("rank mismatch"));
             }
 
-            let scalar = if a_res.is_scalar() {
-                a_res.clone()
+            // Since:
+            //   !(!scalar(a) && !scalar(b)) => (scalar(a) || scalar(b))
+            //
+            // We can assume that the unwrap never fails.
+            let (scalar, mut non_scalar) = if a_res.is_scalar() {
+                (a_res.scalar().unwrap(), b_res)
             } else {
-                b_res.clone()
-            }
-            .scalar()
-            .unwrap();
-            let mut non_scalar = if a_res.is_scalar() { b_res } else { a_res };
+                (b_res.scalar().unwrap(), a_res)
+            };
 
             let matrix = Matrix {
                 values: non_scalar
@@ -186,7 +199,7 @@ impl Executor {
                 shape: non_scalar.shape,
             };
 
-            Ok(Some(Value::Matrix(matrix)))
+            ok_matrix!(matrix)
         };
 
         // (a/b)^(c/d) = (\sqrt d {a^c}) / (\sqrt d {b ^c})
@@ -202,14 +215,14 @@ impl Executor {
     }
 
     fn execute_fold(&mut self, op: FoldOp, expr: Expr) -> Result<Option<Value>, String> {
-        let mut matrix = expect_matrix(self.execute_expr(expr)?.unwrap());
+        let mut matrix = expect_matrix!(self.execute_expr(expr)?);
 
         let apply = |f: &dyn Fn(&Ratio, &Ratio) -> Ratio| {
             let mut curr = matrix.values[0].clone();
             for val in matrix.values.iter().skip(1) {
                 curr = f(&curr, &val);
             }
-            Ok(Some(Value::Matrix(Matrix::from(curr))))
+            ok_matrix!(curr)
         };
 
         match op {
@@ -247,11 +260,6 @@ impl Executor {
                 }
             };
         }
-        macro_rules! ok_matrix {
-            ($var:expr) => {
-                Ok(Some(Value::Matrix(Matrix::from($var))))
-            };
-        }
 
         return match node {
             Expr::Atom(Atom::Rat(v)) => ok_matrix!(v),
@@ -266,30 +274,34 @@ impl Executor {
                     Value::Function(f) => Ok(Some(Value::Function(f.clone()))),
                 }
             }
+
             Expr::Vector(mut v) => {
-                let mut expressions: Vec<_> = v
-                    .drain(..)
-                    .map(|e| self.execute_expr(e).unwrap().unwrap())
-                    .collect();
+                let mut expressions = Vec::with_capacity(v.len());
+                for e in v.drain(..) {
+                    expressions.push(self.execute_expr(e)?.unwrap());
+                }
 
                 match expressions[0].clone() {
                     Value::Function(f) => {
-                        let args = expressions
-                            .drain(..)
-                            .skip(1)
-                            .map(|e| expect_matrix(e));
+                        let mut args = Vec::with_capacity(expressions.len() - 1);
+                        for e in expressions.drain(..).skip(1) {
+                            args.push(expect_matrix!(Some(e)));
+                        }
 
                         self.call_function(f, args)
                     }
 
                     Value::Matrix(_) => {
-                        let values: Vec<_> = expressions
-                            .drain(..)
-                            .map(|e| expect_matrix(e).scalar().unwrap())
-                            .collect();
-                        let shape = vec![values.len()];
+                        let mut values = Vec::with_capacity(expressions.len());
+                        for e in expressions.drain(..) {
+                            let scalar = match expect_matrix!(Some(e)).scalar() {
+                                None => return Err(String::from("nested matrices aren't allowed")),
+                                Some(s) => s,
+                            };
+                            values.push(scalar);
+                        }
 
-                        ok_matrix!(Matrix { values, shape })
+                        ok_matrix!(Matrix::make_vector(values))
                     }
                 }
             }
@@ -301,7 +313,9 @@ impl Executor {
             Expr::Assign(var, val) => {
                 err_var_exists!(var);
                 let res = self.execute_expr(*val)?;
-                self.variables.insert(var, res.clone().unwrap());
+                if let Some(val) = res.clone() {
+                    self.variables.insert(var, val);
+                }
                 Ok(res)
             }
 
