@@ -297,7 +297,11 @@ impl Executor {
                         self.call_function(f, args)
                     }
 
-                    Value::Matrix(_) => {
+                    Value::Matrix(first) => {
+                        if expressions.len() == 1 {
+                            return ok_matrix!(first);
+                        }
+
                         let mut values = Vec::with_capacity(expressions.len());
                         for e in expressions.drain(..) {
                             let scalar = match expect_matrix!(Some(e)).scalar() {
