@@ -190,9 +190,22 @@ fn p_expr_5<'a>() -> Parser<'a, Expr> {
     left_recurse(p_expr_4, op_p, |e1, op, e2| Expr::Binary(Box::new(e1), op, Box::new(e2)))
 }
 
-// /// Fold of sums
-// fn p_expr_fold<'a>() -> Parser<'a, Expr> {
-// }
+/// Fold
+fn p_expr_fold<'a>() -> Parser<'a, Expr> {
+    let op_p = || {
+        (
+            symbol(operator("**")).map(|_| BinOp::Pow)
+            | symbol(operator("*")).map(|_| BinOp::Mul)
+            | symbol(operator("/")).map(|_| BinOp::Div)
+            | symbol(operator("%")).map(|_| BinOp::Mod)
+            | symbol(operator("+")).map(|_| BinOp::Add)
+            | symbol(operator("-")).map(|_| BinOp::Sub)
+        ).map(FoldOp::BinOp)
+        | p_varname().map(FoldOp::FunctionRef)
+    };
+
+    (op_p() - symbol(operator("//")) + call(p_expr)).map(|(op, expr)| Expr::Fold(op, Box::new(expr)))
+}
 
 // fn p_expr_fn<'a>() -> Parser<'a, Expr> {
 //     (symbol(tag("fn")) * symbol(p_varname())
@@ -202,7 +215,7 @@ fn p_expr_5<'a>() -> Parser<'a, Expr> {
 // }
 
 fn p_expr<'a>() -> Parser<'a, Expr> {
-    p_expr_5()
+    p_expr_fold() | p_expr_5()
 }
 
 pub fn parse(source: &str) -> Result<Expr, pom::Error> {
