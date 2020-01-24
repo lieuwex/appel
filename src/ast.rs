@@ -93,7 +93,7 @@ impl fmt::Display for Expr {
                 Ok(())
             }
 
-            Expr::Unary(op, expr) => write!(f, "{} {}", op, expr),
+            Expr::Unary(op, expr) => write!(f, "{}{}", op, expr),
             Expr::Binary(a, op, b) => write!(f, "{} {} {}", a, op, b),
             Expr::Fold(op, expr) => write!(f, "{}//{}", op, expr),
             Expr::Assign(name, expr) => write!(f, "{} = {}", name, expr),
