@@ -158,51 +158,51 @@ impl Executor {
 
     fn execute_binary(&mut self, op: BinOp, a: Expr, b: Expr) -> Result<Option<Value>, String> {
         let apply = |f: &dyn Fn(&Ratio, &Ratio) -> Ratio| {
-            let mut res = vec![
-                expect_matrix!(self.execute_expr(a)?),
-                expect_matrix!(self.execute_expr(b)?),
-            ];
+            let a_res = expect_matrix!(self.execute_expr(a)?);
+            let b_res = expect_matrix!(self.execute_expr(b)?);
 
-            if res[0].shape == res[1].shape {
-                let values = res[0]
+            if a_res.shape == b_res.shape {
+                let values = a_res
                     .values
                     .iter()
-                    .zip(&res[1].values)
+                    .zip(b_res.values)
                     .map(|(a, b)| f(&a, &b))
                     .collect();
 
                 let matrix = Matrix {
                     values,
-                    shape: res[0].shape.clone(),
+                    shape: a_res.shape,
                 };
                 return ok_matrix!(matrix);
             }
 
-            if !res[0].is_scalar() && !res[1].is_scalar() {
+            if !a_res.is_scalar() && !b_res.is_scalar() {
                 return Err(String::from("rank mismatch"));
             }
-
-            let (scalar_index, non_scalar_index) = if res[0].is_scalar() { (0, 1) } else { (1, 0) };
 
             // Since:
             //   !(!scalar(a) && !scalar(b)) => (scalar(a) || scalar(b))
             //
             // We can assume that the unwrap never fails.
-            let scalar = &res[scalar_index].scalar().unwrap();
+            let (scalar, mut non_scalar, scalar_is_left) = if a_res.is_scalar() {
+                (a_res.scalar().unwrap(), b_res, true)
+            } else {
+                (b_res.scalar().unwrap(), a_res, false)
+            };
 
             let matrix = Matrix {
-                values: res[non_scalar_index]
+                values: non_scalar
                     .values
                     .drain(..)
                     .map(|v| {
-                        if scalar_index == 0 {
-                            f(scalar, &v)
+                        if scalar_is_left {
+                            f(&scalar, &v)
                         } else {
-                            f(&v, scalar)
+                            f(&v, &scalar)
                         }
                     })
                     .collect(),
-                shape: res[non_scalar_index].shape.clone(),
+                shape: non_scalar.shape,
             };
 
             ok_matrix!(matrix)
