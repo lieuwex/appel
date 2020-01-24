@@ -164,7 +164,7 @@ impl Executor {
                 return Ok(Some(Value::Matrix(matrix)));
             }
 
-            if !a_res.is_scalar() && b_res.is_scalar() {
+            if !a_res.is_scalar() && !b_res.is_scalar() {
                 return Err(String::from("rank mismatch"));
             }
 
