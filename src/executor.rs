@@ -54,7 +54,7 @@ impl fmt::Display for Matrix {
                 write!(f, " ")?;
             }
 
-            write!(f, "{}", val);
+            write!(f, "{}", val)?;
         }
 
         Ok(())
