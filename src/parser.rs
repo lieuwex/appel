@@ -26,10 +26,8 @@ fn symbol<'a, T: 'a>(p: Parser<'a, T>) -> Parser<'a, T> {
     whitespace() * p
 }
 
-static OPERATOR_CHARS: &'static str = "+-*/!@#$%^&*=";
-
 fn operator<'a>(text: &'static str) -> Parser<'a, ()> {
-    (tag(text) - !(is_a(|c: char| c.is_whitespace()) | one_of(OPERATOR_CHARS))).discard()
+    tag(text).discard()
 }
 
 fn integer_decimal(s: &[char]) -> Result<BigUint, num_bigint::ParseBigIntError> {
@@ -140,7 +138,7 @@ fn p_var<'a>() -> Parser<'a, Atom> {
 }
 
 fn p_atom<'a>() -> Parser<'a, Atom> {
-    p_float() | p_int() | p_var()
+    symbol(p_float() | p_int() | p_var())
 }
 
 /// Parenthesised expression or plain atom
@@ -185,7 +183,7 @@ fn p_expr_4<'a>() -> Parser<'a, Expr> {
     left_recurse(p_expr_3, op_p, |e1, op, e2| Expr::Binary(Box::new(e1), op, Box::new(e2)))
 }
 
-/// Sum (*, /) of products
+/// Sum (+, -) of products
 fn p_expr_5<'a>() -> Parser<'a, Expr> {
     let op_p = || symbol(operator("+")).map(|_| BinOp::Add)
                     | symbol(operator("-")).map(|_| BinOp::Sub);
