@@ -101,10 +101,10 @@ impl Executor {
     fn call_function(
         &mut self,
         f: Function,
-        mut args: Vec<Matrix>,
+        args: impl IntoIterator<Item=Matrix>,
     ) -> Result<Option<Value>, String> {
         let mut ctx = self.clone();
-        for (param, matrix) in f.params.iter().zip(args.drain(..)) {
+        for (param, matrix) in f.params.iter().zip(args) {
             ctx.variables
                 .insert(param.to_string(), Value::Matrix(matrix));
         }
@@ -231,8 +231,7 @@ impl Executor {
                             return Err(String::from("function does not take 2 params"));
                         }
 
-                        let args: Vec<Matrix> =
-                            matrix.values.drain(..).map(|v| Matrix::from(v)).collect();
+                        let args = matrix.values.drain(..).map(|v| Matrix::from(v));
                         self.call_function(f, args)
                     }
                 },
@@ -275,11 +274,10 @@ impl Executor {
 
                 match expressions[0].clone() {
                     Value::Function(f) => {
-                        let args: Vec<_> = expressions
+                        let args = expressions
                             .drain(..)
                             .skip(1)
-                            .map(|e| expect_matrix(e))
-                            .collect();
+                            .map(|e| expect_matrix(e));
 
                         self.call_function(f, args)
                     }
