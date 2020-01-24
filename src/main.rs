@@ -3,6 +3,7 @@ mod executor;
 mod parser;
 
 use num_traits::cast::FromPrimitive;
+use std::env;
 
 use crate::ast::*;
 use crate::executor::*;
@@ -20,7 +21,14 @@ macro_rules! fmt_res {
 }
 
 fn main() {
-    println!("{}", parser::parse("2/5+3*4").unwrap());
+    if let Some(input) = env::args().nth(1) {
+        let parsed = parser::parse(&input).unwrap();
+        let mut exec = Executor::new();
+        let res = exec.execute_expr(parsed);
+        println!("arg output: {}\n", fmt_res!(res));
+    }
+
+    println!("{}", parser::parse("2 / 5").unwrap());
     println!("{}", parser::parse("1.2").unwrap());
 
     let mut exec = Executor::new();
