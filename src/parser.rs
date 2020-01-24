@@ -18,6 +18,15 @@ fn left_recurse<'a, E: 'a, O: 'a>(
     })
 }
 
+fn binary_op<'a>() -> Parser<'a, BinOp> {
+    symbol(operator("**")).map(|_| BinOp::Pow)
+    | symbol(operator("*")).map(|_| BinOp::Mul)
+    | symbol(operator("/")).map(|_| BinOp::Div)
+    | symbol(operator("%")).map(|_| BinOp::Mod)
+    | symbol(operator("+")).map(|_| BinOp::Add)
+    | symbol(operator("-")).map(|_| BinOp::Sub)
+}
+
 fn whitespace<'a>() -> Parser<'a, ()> {
     is_a(|c: char| c.is_ascii_whitespace()).repeat(0..).discard()
 }
@@ -191,20 +200,11 @@ fn p_expr_5<'a>() -> Parser<'a, Expr> {
 }
 
 /// Fold
-fn p_expr_fold<'a>() -> Parser<'a, Expr> {
-    let op_p = || {
-        (
-            symbol(operator("**")).map(|_| BinOp::Pow)
-            | symbol(operator("*")).map(|_| BinOp::Mul)
-            | symbol(operator("/")).map(|_| BinOp::Div)
-            | symbol(operator("%")).map(|_| BinOp::Mod)
-            | symbol(operator("+")).map(|_| BinOp::Add)
-            | symbol(operator("-")).map(|_| BinOp::Sub)
-        ).map(FoldOp::BinOp)
-        | p_varname().map(FoldOp::FunctionRef)
-    };
+fn p_expr_6<'a>() -> Parser<'a, Expr> {
+    let op_p = || binary_op().map(FoldOp::BinOp) | p_varname().map(FoldOp::FunctionRef);
+    let fold = (op_p() - symbol(operator("//")) + call(p_expr)).map(|(op, expr)| Expr::Fold(op, Box::new(expr)));
 
-    (op_p() - symbol(operator("//")) + call(p_expr)).map(|(op, expr)| Expr::Fold(op, Box::new(expr)))
+    fold | p_expr_5()
 }
 
 // fn p_expr_fn<'a>() -> Parser<'a, Expr> {
@@ -215,7 +215,7 @@ fn p_expr_fold<'a>() -> Parser<'a, Expr> {
 // }
 
 fn p_expr<'a>() -> Parser<'a, Expr> {
-    p_expr_fold() | p_expr_5()
+    p_expr_6()
 }
 
 pub fn parse(source: &str) -> Result<Expr, pom::Error> {
