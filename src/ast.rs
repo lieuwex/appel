@@ -1,4 +1,3 @@
-use num_bigint::BigInt;
 use std::fmt;
 
 pub type Ratio = num_rational::BigRational;

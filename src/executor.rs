@@ -1,4 +1,3 @@
-use num_bigint::{BigInt, BigUint};
 use std::collections::HashMap;
 use std::fmt;
 use std::ops::Neg;
@@ -328,21 +327,22 @@ impl Executor {
     }
 
     pub fn execute(&mut self, node: Statement) -> Result<Option<Value>, String> {
-        let is_conflict = |old: Option<&Value>, new_is_fun: bool| {
-            match old {
-                None => false,
-                Some(old) => match old {
-                    Value::Matrix(_) => new_is_fun,
-                    Value::Function(_) => !new_is_fun,
-                }
-            }
+        let is_conflict = |old: Option<&Value>, new_is_fun: bool| match old {
+            None => false,
+            Some(old) => match old {
+                Value::Matrix(_) => new_is_fun,
+                Value::Function(_) => !new_is_fun,
+            },
         };
 
         macro_rules! err_var_exists {
             ($name:expr, $is_fun:expr) => {
                 let old = self.variables.get(&$name);
                 if is_conflict(old, $is_fun) {
-                    return Err(format!("variable {} already exists with different type", $name));
+                    return Err(format!(
+                        "variable {} already exists with different type",
+                        $name
+                    ));
                 }
             };
         }
