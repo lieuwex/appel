@@ -221,8 +221,17 @@ fn p_fun<'a>() -> Parser<'a, Statement> {
     ).map(|((fnname, args), body)| Statement::FunDeclare(fnname, args, Box::new(body))).name("function")
 }
 
+/// Variable assignment
+fn p_assign<'a>() -> Parser<'a, Statement> {
+    (
+        symbol(p_varname())
+        - symbol(operator("="))
+        + call(p_expr)
+    ).map(|(name, body)| Statement::Assign(name, Box::new(body))).name("assign")
+}
+
 fn p_statement<'a>() -> Parser<'a, Statement> {
-    p_fun() | p_expr().map(Statement::Expr)
+    p_fun() | p_assign() | p_expr().map(Statement::Expr)
 }
 
 pub fn parse(source: &str) -> Result<Statement, pom::Error> {
