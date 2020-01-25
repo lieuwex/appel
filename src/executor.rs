@@ -370,8 +370,27 @@ impl Executor {
             }
 
             Statement::InternalCommand(command, args) => {
+                macro_rules! expect_nargs {
+                    (== $count:expr) => {
+                        if args.len() != $count {
+                            return Err(format!("expected {} arguments", $count));
+                        }
+                    };
+                    (< $count:expr) => {
+                        if args.len() >= $count {
+                            return Err(format!("expected less than {} arguments", $count));
+                        }
+                    };
+                    (> $count:expr) => {
+                        if args.len() <= $count {
+                            return Err(format!("expected more than {} arguments", $count));
+                        }
+                    };
+                }
+
                 match command.as_str() {
                     "n" | "number" => {
+                        expect_nargs!(== 1);
                         match self.variables.get(&args[0]) {
                             None => return Err(format!("no variable {} found", args[0])),
                             Some(Value::Function(_)) => {
