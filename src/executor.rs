@@ -129,32 +129,43 @@ impl Executor {
     }
 
     fn execute_unary(&mut self, op: UnOp, expr: Expr) -> Result<Option<Value>, String> {
+        let res = self.execute_expr(expr)?;
+
         if op == UnOp::Id {
-            return self.execute_expr(expr);
+            return Ok(res);
         }
 
-        let for_all = |f: &dyn Fn(Ratio) -> Ratio| {
-            let res = self.execute_expr(expr)?;
-            let mut val = expect_matrix!(res);
+        macro_rules! for_all {
+            ($f:expr) => {{
+                let mut val = expect_matrix!(res);
 
-            let values = val.values.drain(..).map(f).collect();
-            let new = Matrix {
-                values: values,
-                shape: val.shape,
-            };
-            ok_matrix!(new)
-        };
+                let values = val.values.drain(..).map($f).collect();
+                let new = Matrix {
+                    values: values,
+                    shape: val.shape,
+                };
+                ok_matrix!(new)
+            }};
+        }
 
         match op {
             UnOp::Id => unreachable!(),
-            UnOp::Neg => for_all(&|x: Ratio| x.neg()),
-            UnOp::Not => for_all(&|x: Ratio| {
+            UnOp::Neg => for_all!(&|x: Ratio| x.neg()),
+            UnOp::Not => for_all!(&|x: Ratio| {
                 if x == Ratio::zero() {
                     Ratio::one()
                 } else {
                     Ratio::zero()
                 }
             }),
+            UnOp::Iota => match expect_matrix!(res).scalar() {
+                None => return Err(String::from("expected scalar")),
+                Some(s) => {
+                    let upper = s.to_integer().to_usize().unwrap_or(std::usize::MAX);
+                    let values: Vec<_> = (0..upper).filter_map(Ratio::from_usize).collect();
+                    ok_matrix!(Matrix::make_vector(values))
+                }
+            },
         }
     }
 

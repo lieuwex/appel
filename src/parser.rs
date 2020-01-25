@@ -168,6 +168,7 @@ fn p_expr_2<'a>() -> Parser<'a, Expr> {
             operator("+").map(|_| UnOp::Id)
             | operator("-").map(|_| UnOp::Neg)
             | operator("!").map(|_| UnOp::Not)
+            | operator("iota").map(|_| UnOp::Iota)
         ).name("unary")
     }
 
