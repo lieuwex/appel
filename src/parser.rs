@@ -208,19 +208,25 @@ fn p_expr_6<'a>() -> Parser<'a, Expr> {
     (fold).name("fold") | p_expr_5()
 }
 
-// fn p_expr_fn<'a>() -> Parser<'a, Expr> {
-//     (symbol(tag("fn")) * symbol(p_varname())
-//         + symbol(p_varname()).repeat(1..) - symbol(operator("="))
-//         + p_expr()
-//     ).map(|((fnname, args), body)| Expr::FunDeclare(fnname, args, Box::new(body)))
-// }
-
 fn p_expr<'a>() -> Parser<'a, Expr> {
     p_expr_6()
 }
 
+/// Function declare
+fn p_fun<'a>() -> Parser<'a, Expr> {
+    (
+        operator("fn") * symbol(p_varname())
+        + symbol(p_varname()).repeat(1..) - symbol(operator("="))
+        + call(p_expr)
+    ).map(|((fnname, args), body)| Expr::FunDeclare(fnname, args, Box::new(body))).name("function")
+}
+
+fn p_statement<'a>() -> Parser<'a, Expr> {
+    p_fun() | p_expr()
+}
+
 pub fn parse(source: &str) -> Result<Expr, pom::Error> {
     let chars = source.chars().collect::<Vec<_>>();
-    let res = (p_expr() - whitespace() - end()).parse(&chars);
+    let res = (p_statement() - whitespace() - end()).parse(&chars);
     res
 }
