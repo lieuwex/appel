@@ -2,33 +2,38 @@ mod ast;
 mod executor;
 mod parser;
 
-use num_traits::cast::FromPrimitive;
-use std::env;
+use std::io::BufRead;
 
-use crate::ast::*;
-use crate::executor::*;
+use crate::executor::Executor;
 
-macro_rules! fmt_res {
-    ($res:expr) => {
-        match $res {
-            Err(e) => format!("Err({})", e),
-            Ok(r) => match r {
-                Some(v) => format!("Ok({})", v),
-                None => format!("Ok(None)"),
-            },
+fn exec_line(exec: &mut Executor, line: std::io::Result<String>) -> Result<String, String> {
+    let line = match line {
+        Err(e) => {
+            eprintln!("error reading from stdin: {}", e);
+            std::process::exit(1);
         }
+        Ok(l) => l,
     };
+
+    let parsed = match parser::parse(&line) {
+        Err(e) => return Err(format!("error while parsing: {}", e)),
+        Ok(s) => s,
+    };
+
+    match exec.execute(parsed) {
+        Err(e) => Err(format!("error while executing: {}", e)),
+        Ok(None) => Ok(String::new()),
+        Ok(Some(res)) => Ok(format!("{}", res)),
+    }
 }
 
 fn main() {
-    if let Some(input) = env::args().nth(1) {
-        let parsed = parser::parse(&input).unwrap();
-        println!("parsed as: {:?}\n", parsed);
-        let mut exec = Executor::new();
-        let res = exec.execute(parsed);
-        println!("arg output: {}\n", fmt_res!(res));
-    }
+    let mut exec = Executor::new();
 
-    println!("{}", parser::parse("2 / 5").unwrap());
-    println!("{}", parser::parse("1.2").unwrap());
+    for line in std::io::stdin().lock().lines() {
+        match exec_line(&mut exec, line) {
+            Err(e) => eprintln!("{}\n", e),
+            Ok(r) => println!("{}\n", r),
+        }
+    }
 }
