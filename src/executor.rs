@@ -315,10 +315,21 @@ impl Executor {
     }
 
     pub fn execute(&mut self, node: Statement) -> Result<Option<Value>, String> {
+        let is_conflict = |old: Option<&Value>, new_is_fun: bool| {
+            match old {
+                None => false,
+                Some(old) => match old {
+                    Value::Matrix(_) => new_is_fun,
+                    Value::Function(_) => !new_is_fun,
+                }
+            }
+        };
+
         macro_rules! err_var_exists {
-            ($var:expr) => {
-                if self.variables.contains_key(&$var) {
-                    return Err(format!("variable {} already exists", $var));
+            ($name:expr, $is_fun:expr) => {
+                let old = self.variables.get(&$name);
+                if is_conflict(old, $is_fun) {
+                    return Err(format!("variable {} already exists with different type", $name));
                 }
             };
         }
@@ -327,7 +338,7 @@ impl Executor {
             Statement::Expr(e) => self.execute_expr(e),
 
             Statement::Assign(var, val) => {
-                err_var_exists!(var);
+                err_var_exists!(var, false);
                 let res = self.execute_expr(*val)?;
                 if let Some(val) = res.clone() {
                     self.variables.insert(var, val);
@@ -336,7 +347,7 @@ impl Executor {
             }
 
             Statement::FunDeclare(name, params, expr) => {
-                err_var_exists!(name);
+                err_var_exists!(name, true);
                 let f = Function {
                     params,
                     expr: *expr,
