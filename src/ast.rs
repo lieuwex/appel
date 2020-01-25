@@ -29,6 +29,7 @@ pub enum BinOp {
     Div,
     Mod,
     Pow,
+    Skip,
 }
 
 impl fmt::Display for BinOp {
@@ -40,6 +41,8 @@ impl fmt::Display for BinOp {
             BinOp::Div => write!(f, "/"),
             BinOp::Mod => write!(f, "%"),
             BinOp::Pow => write!(f, "**"),
+
+            BinOp::Skip => write!(f, "skip"),
         }
     }
 }
@@ -104,7 +107,7 @@ pub enum Statement {
     Assign(String, Box<Expr>),
     // name, parameters, tree
     FunDeclare(String, Vec<String>, Box<Expr>),
-    InternalCommand(String, Vec<String>),
+    InternalCommand(String, Vec<Expr>),
 }
 
 impl fmt::Display for Statement {

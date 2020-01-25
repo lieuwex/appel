@@ -4,7 +4,7 @@ mod parser;
 
 use std::io::BufRead;
 
-use crate::executor::Executor;
+use crate::executor::{Executor, ExecutorResult};
 
 fn exec_line(exec: &mut Executor, line: std::io::Result<String>) -> Result<String, String> {
     let line = match line {
@@ -20,10 +20,13 @@ fn exec_line(exec: &mut Executor, line: std::io::Result<String>) -> Result<Strin
         Ok(s) => s,
     };
 
+    println!("parsed as: {:?}", parsed);
+
     match exec.execute(parsed) {
         Err(e) => Err(format!("error while executing: {}", e)),
-        Ok(None) => Ok(String::new()),
-        Ok(Some(res)) => Ok(format!("{}", res)),
+        Ok(ExecutorResult::None) => Ok(String::new()),
+        Ok(ExecutorResult::Value(res)) => Ok(format!("{}", res)),
+        Ok(ExecutorResult::Info(s)) => Ok(s),
     }
 }
 

@@ -20,7 +20,8 @@ fn left_recurse<'a, E: 'a, O: 'a>(
 }
 
 fn binary_op<'a>() -> Parser<'a, BinOp> {
-    symbol(operator("**")).map(|_| BinOp::Pow)
+    symbol(operator("skip")).map(|_| BinOp::Skip)
+    | symbol(operator("**")).map(|_| BinOp::Pow)
     | symbol(operator("*")).map(|_| BinOp::Mul)
     | symbol(operator("/")).map(|_| BinOp::Div)
     | symbol(operator("%")).map(|_| BinOp::Mod)
@@ -33,7 +34,7 @@ fn whitespace<'a>() -> Parser<'a, ()> {
 }
 
 fn symbol<'a, T: 'a>(p: Parser<'a, T>) -> Parser<'a, T> {
-    (whitespace() * p).name("symbol")
+    (whitespace() * p - whitespace()).name("symbol")
 }
 
 fn operator<'a>(text: &'static str) -> Parser<'a, ()> {
@@ -201,16 +202,21 @@ fn p_expr_5<'a>() -> Parser<'a, Expr> {
     left_recurse(p_expr_4, op_p, "sum", |e1, op, e2| Expr::Binary(Box::new(e1), op, Box::new(e2)))
 }
 
-/// Fold
 fn p_expr_6<'a>() -> Parser<'a, Expr> {
+    let op_p = || symbol(operator("skip")).map(|_| BinOp::Skip);
+    left_recurse(p_expr_5, op_p, "special", |e1, op, e2| Expr::Binary(Box::new(e1), op, Box::new(e2)))
+}
+
+/// Fold
+fn p_expr_7<'a>() -> Parser<'a, Expr> {
     let op_p = || binary_op().map(FoldOp::BinOp) | p_varname().map(FoldOp::FunctionRef);
     let fold = (op_p() - symbol(operator("//")) + call(p_expr)).map(|(op, expr)| Expr::Fold(op, Box::new(expr)));
 
-    (fold).name("fold") | p_expr_5()
+    (fold).name("fold") | p_expr_6()
 }
 
 fn p_expr<'a>() -> Parser<'a, Expr> {
-    p_expr_6()
+    p_expr_7()
 }
 
 /// Function declare
@@ -239,7 +245,7 @@ fn p_command<'a>() -> Parser<'a, Statement> {
         symbol(operator(")"))
         * not_whitespace_word()
         - whitespace()
-        + list(not_whitespace_word(), whitespace())
+        + list(p_atom().map(Expr::Atom), whitespace())
     ).map(|(name, vars)| Statement::InternalCommand(name, vars)).name("assign")
 }
 
