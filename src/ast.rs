@@ -103,6 +103,7 @@ pub enum Statement {
     Assign(String, Box<Expr>),
     // name, parameters, tree
     FunDeclare(String, Vec<String>, Box<Expr>),
+    InternalCommand(String, Vec<String>),
 }
 
 impl fmt::Display for Statement {
@@ -113,12 +114,21 @@ impl fmt::Display for Statement {
             Statement::Assign(name, expr) => write!(f, "{} = {}", name, expr),
 
             Statement::FunDeclare(name, args, expr) => {
+                write!(f, "fn {}", name)?;
+                for arg in args {
+                    write!(f, " {}", arg)?;
+                }
+
+                write!(f, " = {}", expr)
+            }
+
+            Statement::InternalCommand(name, args) => {
                 write!(f, "{}", name)?;
                 for arg in args {
                     write!(f, " {}", arg)?;
                 }
 
-                write!(f, " {}", expr)
+                Ok(())
             }
         }
     }

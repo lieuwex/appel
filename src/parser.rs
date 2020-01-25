@@ -230,8 +230,20 @@ fn p_assign<'a>() -> Parser<'a, Statement> {
     ).map(|(name, body)| Statement::Assign(name, Box::new(body))).name("assign")
 }
 
+/// Internal command
+fn p_command<'a>() -> Parser<'a, Statement> {
+    let not_whitespace_word = || is_a(|c: char| !c.is_ascii_whitespace()).repeat(1..).map(|x| x.iter().collect::<String>());
+
+    (
+        symbol(operator(")"))
+        * not_whitespace_word()
+        - whitespace()
+        + list(not_whitespace_word(), whitespace())
+    ).map(|(name, vars)| Statement::InternalCommand(name, vars)).name("assign")
+}
+
 fn p_statement<'a>() -> Parser<'a, Statement> {
-    p_fun() | p_assign() | p_expr().map(Statement::Expr)
+    p_fun() | p_assign() | p_command() | p_expr().map(Statement::Expr)
 }
 
 pub fn parse(source: &str) -> Result<Statement, pom::Error> {

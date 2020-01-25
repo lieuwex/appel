@@ -1,9 +1,11 @@
+use num_bigint::{BigInt, BigUint};
 use std::collections::HashMap;
 use std::fmt;
 use std::ops::Neg;
 
 use crate::ast::*;
 
+use num_traits::cast::{FromPrimitive, ToPrimitive};
 use num_traits::identities::{One, Zero};
 
 #[derive(Clone, Debug)]
@@ -334,7 +336,7 @@ impl Executor {
             };
         }
 
-        match node {
+        let res = match node {
             Statement::Expr(e) => self.execute_expr(e),
 
             Statement::Assign(var, val) => {
@@ -355,6 +357,38 @@ impl Executor {
                 self.variables.insert(name, Value::Function(f));
                 Ok(None)
             }
+
+            Statement::InternalCommand(command, args) => {
+                match command.as_str() {
+                    "n" | "number" => {
+                        match self.variables.get(&args[0]) {
+                            None => return Err(format!("no variable {} found", args[0])),
+                            Some(Value::Function(_)) => {
+                                return Err(String::from("can't format function to number"))
+                            }
+                            Some(Value::Matrix(m)) => {
+                                // TODO: return this
+                                for val in &m.values {
+                                    let (num, den) = val.clone().into();
+                                    let fnum = num.to_f64().unwrap_or(std::f64::MAX);
+                                    let fden = den.to_f64().unwrap_or(std::f64::MAX);
+                                    println!("{}", fnum / fden);
+                                }
+                            }
+                        }
+                    }
+
+                    cmd => return Err(format!("unknown command {}", cmd)),
+                }
+
+                Ok(None)
+            }
+        };
+
+        if let Ok(Some(x)) = res.clone() {
+            self.variables.insert(String::from("_"), x);
         }
+
+        res
     }
 }
