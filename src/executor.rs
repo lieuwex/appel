@@ -475,8 +475,8 @@ impl Executor {
             }
         };
 
-        if let Ok(ExecutorResult::Value(x)) = res.clone() {
-            self.variables.insert(String::from("_"), x);
+        if let Ok(ExecutorResult::Value(Value::Matrix(m))) = res.clone() {
+            self.variables.insert(String::from("_"), Value::Matrix(m));
         }
 
         res
