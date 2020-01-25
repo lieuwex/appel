@@ -213,19 +213,19 @@ fn p_expr<'a>() -> Parser<'a, Expr> {
 }
 
 /// Function declare
-fn p_fun<'a>() -> Parser<'a, Expr> {
+fn p_fun<'a>() -> Parser<'a, Statement> {
     (
         operator("fn") * symbol(p_varname())
         + symbol(p_varname()).repeat(1..) - symbol(operator("="))
         + call(p_expr)
-    ).map(|((fnname, args), body)| Expr::FunDeclare(fnname, args, Box::new(body))).name("function")
+    ).map(|((fnname, args), body)| Statement::FunDeclare(fnname, args, Box::new(body))).name("function")
 }
 
-fn p_statement<'a>() -> Parser<'a, Expr> {
-    p_fun() | p_expr()
+fn p_statement<'a>() -> Parser<'a, Statement> {
+    p_fun() | p_expr().map(Statement::Expr)
 }
 
-pub fn parse(source: &str) -> Result<Expr, pom::Error> {
+pub fn parse(source: &str) -> Result<Statement, pom::Error> {
     let chars = source.chars().collect::<Vec<_>>();
     let res = (p_statement() - whitespace() - end()).parse(&chars);
     res

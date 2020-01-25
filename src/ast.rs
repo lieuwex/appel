@@ -71,9 +71,6 @@ pub enum Expr {
     Unary(UnOp, Box<Expr>),
     Binary(Box<Expr>, BinOp, Box<Expr>),
     Fold(FoldOp, Box<Expr>),
-    Assign(String, Box<Expr>),
-    // name, parameters, tree
-    FunDeclare(String, Vec<String>, Box<Expr>),
 }
 
 impl fmt::Display for Expr {
@@ -96,9 +93,26 @@ impl fmt::Display for Expr {
             Expr::Unary(op, expr) => write!(f, "{}{}", op, expr),
             Expr::Binary(a, op, b) => write!(f, "{} {} {}", a, op, b),
             Expr::Fold(op, expr) => write!(f, "{}//{}", op, expr),
-            Expr::Assign(name, expr) => write!(f, "{} = {}", name, expr),
+        }
+    }
+}
 
-            Expr::FunDeclare(name, args, expr) => {
+#[derive(Clone, Debug)]
+pub enum Statement {
+    Expr(Expr),
+    Assign(String, Box<Expr>),
+    // name, parameters, tree
+    FunDeclare(String, Vec<String>, Box<Expr>),
+}
+
+impl fmt::Display for Statement {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Statement::Expr(e) => write!(f, "{}", e),
+
+            Statement::Assign(name, expr) => write!(f, "{} = {}", name, expr),
+
+            Statement::FunDeclare(name, args, expr) => {
                 write!(f, "{}", name)?;
                 for arg in args {
                     write!(f, " {}", arg)?;

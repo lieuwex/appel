@@ -258,16 +258,8 @@ impl Executor {
         }
     }
 
-    pub fn execute_expr(&mut self, node: Expr) -> Result<Option<Value>, String> {
-        macro_rules! err_var_exists {
-            ($var:expr) => {
-                if self.variables.contains_key(&$var) {
-                    return Err(format!("variable {} already exists", $var));
-                }
-            };
-        }
-
-        return match node {
+    fn execute_expr(&mut self, node: Expr) -> Result<Option<Value>, String> {
+        match node {
             Expr::Atom(Atom::Rat(v)) => ok_matrix!(v),
             Expr::Atom(Atom::Ref(s)) => {
                 let var = match self.variables.get(&s) {
@@ -319,8 +311,22 @@ impl Executor {
             Expr::Unary(op, expr) => self.execute_unary(op, *expr),
             Expr::Binary(a, op, b) => self.execute_binary(op, *a, *b),
             Expr::Fold(op, expr) => self.execute_fold(op, *expr),
+        }
+    }
 
-            Expr::Assign(var, val) => {
+    pub fn execute(&mut self, node: Statement) -> Result<Option<Value>, String> {
+        macro_rules! err_var_exists {
+            ($var:expr) => {
+                if self.variables.contains_key(&$var) {
+                    return Err(format!("variable {} already exists", $var));
+                }
+            };
+        }
+
+        match node {
+            Statement::Expr(e) => self.execute_expr(e),
+
+            Statement::Assign(var, val) => {
                 err_var_exists!(var);
                 let res = self.execute_expr(*val)?;
                 if let Some(val) = res.clone() {
@@ -329,7 +335,7 @@ impl Executor {
                 Ok(res)
             }
 
-            Expr::FunDeclare(name, params, expr) => {
+            Statement::FunDeclare(name, params, expr) => {
                 err_var_exists!(name);
                 let f = Function {
                     params,
@@ -338,6 +344,6 @@ impl Executor {
                 self.variables.insert(name, Value::Function(f));
                 Ok(None)
             }
-        };
+        }
     }
 }
