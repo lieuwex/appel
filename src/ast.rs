@@ -1,7 +1,7 @@
 use num_bigint::BigInt;
 use std::fmt;
 
-pub type Ratio = num_rational::Ratio<BigInt>;
+pub type Ratio = num_rational::BigRational;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum UnOp {
