@@ -7,6 +7,19 @@ use crate::ast::*;
 use num_traits::cast::{FromPrimitive, ToPrimitive};
 use num_traits::identities::{One, Zero};
 
+fn to_f64(val: &Ratio) -> f64 {
+    let (num, den) = val.clone().into();
+    let fnum = num.to_f64().unwrap_or(std::f64::MAX);
+    let fden = den.to_f64().unwrap_or(std::f64::MAX);
+    fnum / fden
+}
+fn pow(a: &Ratio, b: &Ratio) -> Ratio {
+    let a = to_f64(a);
+    let b = to_f64(b);
+    let res = a.powf(b);
+    Ratio::from_f64(res).unwrap()
+}
+
 #[derive(Clone, Debug)]
 pub struct Function {
     params: Vec<String>,
@@ -207,7 +220,7 @@ impl Executor {
                         .values
                         .iter()
                         .zip(b_res.values)
-                        .map(|(a, b)| $f(a, b))
+                        .map(|(a, b)| $f(a, &b))
                         .collect();
 
                     let matrix = Matrix {
@@ -225,7 +238,7 @@ impl Executor {
                 //   !(!scalar(a) && !scalar(b)) => (scalar(a) || scalar(b))
                 //
                 // We can assume that the unwrap never fails.
-                let (scalar, mut non_scalar, scalar_is_left) = if a_res.is_scalar() {
+                let (scalar, non_scalar, scalar_is_left) = if a_res.is_scalar() {
                     (a_res.scalar().unwrap(), b_res, true)
                 } else {
                     (b_res.scalar().unwrap(), a_res, false)
@@ -234,7 +247,7 @@ impl Executor {
                 let matrix = Matrix {
                     values: non_scalar
                         .values
-                        .drain(..)
+                        .iter()
                         .map(|v| {
                             if scalar_is_left {
                                 $f(&scalar, v)
@@ -258,7 +271,7 @@ impl Executor {
             BinOp::Mul => apply!(|a, b| a * b),
             BinOp::Div => apply!(|a, b| a / b),
             BinOp::Mod => apply!(|a, b| a % b),
-            BinOp::Pow => apply!(|_, _| todo!()),
+            BinOp::Pow => apply!(pow),
 
             BinOp::Skip => {
                 let scalar = expect_scalar!(self.execute_expr(a)?);
@@ -291,7 +304,7 @@ impl Executor {
             FoldOp::BinOp(BinOp::Mul) => apply(&|a, b| a * b),
             FoldOp::BinOp(BinOp::Div) => apply(&|a, b| a / b),
             FoldOp::BinOp(BinOp::Mod) => apply(&|a, b| a % b),
-            FoldOp::BinOp(BinOp::Pow) => apply(&|_, _| todo!()),
+            FoldOp::BinOp(BinOp::Pow) => apply(&pow),
             FoldOp::BinOp(BinOp::Skip) => apply(&|_, _| todo!()),
 
             FoldOp::FunctionRef(f) => match self.variables.get(&f) {
@@ -444,16 +457,11 @@ impl Executor {
                             ExecutorResult::Value(Value::Function(_)) => {
                                 Err(String::from("can't format function to number"))
                             }
-                            ExecutorResult::Value(Value::Matrix(mut m)) => {
+                            ExecutorResult::Value(Value::Matrix(m)) => {
                                 let s = m
                                     .values
-                                    .drain(..)
-                                    .map(|val| {
-                                        let (num, den) = val.clone().into();
-                                        let fnum = num.to_f64().unwrap_or(std::f64::MAX);
-                                        let fden = den.to_f64().unwrap_or(std::f64::MAX);
-                                        fnum / fden
-                                    })
+                                    .iter()
+                                    .map(to_f64)
                                     .enumerate()
                                     .map(|(i, val)| {
                                         if i == 0 {
