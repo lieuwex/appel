@@ -267,6 +267,16 @@ impl Executor {
                 let values: Vec<_> = (0..upper).filter_map(Ratio::from_usize).collect();
                 ok_matrix!(Matrix::make_vector(values))
             }
+
+            UnOp::Rho => {
+                let m = expect_matrix!(res);
+                let values: Vec<Ratio> = m
+                    .shape
+                    .iter()
+                    .map(|s| Ratio::from_usize(*s).unwrap())
+                    .collect();
+                ok_matrix!(Matrix::make_vector(values))
+            }
         }
     }
 

@@ -9,6 +9,7 @@ pub enum UnOp {
     Not,
     Iota,
     Abs,
+    Rho,
 }
 
 impl fmt::Display for UnOp {
@@ -19,6 +20,7 @@ impl fmt::Display for UnOp {
             UnOp::Not => write!(f, "!"),
             UnOp::Iota => write!(f, "iota"),
             UnOp::Abs => write!(f, "abs"),
+            UnOp::Rho => write!(f, "rho"),
         }
     }
 }

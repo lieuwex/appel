@@ -201,6 +201,7 @@ fn p_expr_3<'a>() -> Parser<'a, Expr> {
             | operator("!").map(|_| UnOp::Not)
             | operator("iota").map(|_| UnOp::Iota)
             | operator("abs").map(|_| UnOp::Abs)
+            | operator("rho").map(|_| UnOp::Rho)
         ).name("unary")
     }
 
