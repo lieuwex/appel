@@ -8,6 +8,7 @@ pub enum UnOp {
     Neg,
     Not,
     Iota,
+    Abs,
 }
 
 impl fmt::Display for UnOp {
@@ -17,6 +18,30 @@ impl fmt::Display for UnOp {
             UnOp::Neg => write!(f, "-"),
             UnOp::Not => write!(f, "!"),
             UnOp::Iota => write!(f, "iota"),
+            UnOp::Abs => write!(f, "abs"),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CompOp {
+    Eq,
+    Neq,
+    Lt,
+    Le,
+    Gt,
+    Ge,
+}
+
+impl fmt::Display for CompOp {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            CompOp::Eq => write!(f, "=="),
+            CompOp::Neq => write!(f, "!="),
+            CompOp::Lt => write!(f, "<"),
+            CompOp::Le => write!(f, "<="),
+            CompOp::Gt => write!(f, ">"),
+            CompOp::Ge => write!(f, ">="),
         }
     }
 }
@@ -29,7 +54,13 @@ pub enum BinOp {
     Div,
     Mod,
     Pow,
+
+    CompOp(CompOp),
+
     Skip,
+    Rho,
+    Unpack,
+    Pack,
 }
 
 impl fmt::Display for BinOp {
@@ -42,7 +73,12 @@ impl fmt::Display for BinOp {
             BinOp::Mod => write!(f, "%"),
             BinOp::Pow => write!(f, "**"),
 
+            BinOp::CompOp(x) => write!(f, "{}", x),
+
             BinOp::Skip => write!(f, "skip"),
+            BinOp::Rho => write!(f, "rho"),
+            BinOp::Unpack => write!(f, "unpack"),
+            BinOp::Pack => write!(f, "pack"),
         }
     }
 }
@@ -75,6 +111,7 @@ pub enum Expr {
     Unary(UnOp, Box<Expr>),
     Binary(Box<Expr>, BinOp, Box<Expr>),
     Fold(FoldOp, Box<Expr>),
+    Index(Box<Expr>, Box<Expr>), // vector, indices
 }
 
 impl fmt::Display for Expr {
@@ -97,6 +134,7 @@ impl fmt::Display for Expr {
             Expr::Unary(op, expr) => write!(f, "{}{}", op, expr),
             Expr::Binary(a, op, b) => write!(f, "{} {} {}", a, op, b),
             Expr::Fold(op, expr) => write!(f, "{}//{}", op, expr),
+            Expr::Index(vec, indices) => write!(f, "{}[{}]", vec, indices),
         }
     }
 }
@@ -104,10 +142,10 @@ impl fmt::Display for Expr {
 #[derive(Clone, Debug)]
 pub enum Statement {
     Expr(Expr),
-    Assign(String, Box<Expr>),
+    Assign(String, Expr),
     // name, parameters, tree
-    FunDeclare(String, Vec<String>, Box<Expr>),
-    InternalCommand(String, Vec<Expr>),
+    FunDeclare(String, Vec<String>, Expr),
+    InternalCommand(String, Expr),
 }
 
 impl fmt::Display for Statement {
@@ -126,14 +164,7 @@ impl fmt::Display for Statement {
                 write!(f, " = {}", expr)
             }
 
-            Statement::InternalCommand(name, args) => {
-                write!(f, "{}", name)?;
-                for arg in args {
-                    write!(f, " {}", arg)?;
-                }
-
-                Ok(())
-            }
+            Statement::InternalCommand(name, body) => write!(f, ")n {} {}", name, body),
         }
     }
 }

@@ -6,6 +6,7 @@ use crate::ast::*;
 
 use num_traits::cast::{FromPrimitive, ToPrimitive};
 use num_traits::identities::{One, Zero};
+use num_traits::sign::Signed;
 
 fn to_f64(val: &Ratio) -> f64 {
     let (num, den) = val.clone().into();
@@ -14,6 +15,8 @@ fn to_f64(val: &Ratio) -> f64 {
     fnum / fden
 }
 fn pow(a: &Ratio, b: &Ratio) -> Ratio {
+    // TODO: optimize this when using an integer for the exponent.
+
     let a = to_f64(a);
     let b = to_f64(b);
     let res = a.powf(b);
@@ -93,6 +96,11 @@ impl fmt::Display for Matrix {
 }
 
 impl Matrix {
+    pub fn make_vector(values: Vec<Ratio>) -> Self {
+        let shape = vec![values.len()];
+        Self { values, shape }
+    }
+
     pub fn is_scalar(&self) -> bool {
         return self.values.len() == 1;
     }
@@ -105,9 +113,13 @@ impl Matrix {
         }
     }
 
-    pub fn make_vector(values: Vec<Ratio>) -> Self {
-        let shape = vec![values.len()];
-        Self { values, shape }
+    pub fn get_at(&self, indices: Vec<usize>) -> Option<&Ratio> {
+        if indices.len() != self.shape.len() {
+            return None;
+        }
+
+        let i: usize = indices.iter().product();
+        self.values.get(i)
     }
 }
 
@@ -134,6 +146,15 @@ macro_rules! expect_matrix {
         }
     };
 }
+macro_rules! expect_vector {
+    ($v:expr) => {{
+        let m = expect_matrix!($v);
+        match m.shape.len() {
+            0 | 1 => m.values,
+            _ => return Err(String::from("expected vector, got matrix")),
+        }
+    }};
+}
 macro_rules! expect_scalar {
     ($v:expr) => {
         match expect_matrix!($v).scalar() {
@@ -146,6 +167,19 @@ macro_rules! ok_matrix {
     ($var:expr) => {
         Ok(ExecutorResult::Value(Value::Matrix(Matrix::from($var))))
     };
+}
+
+fn get_comp_op_fn(op: CompOp) -> impl Fn(&Ratio, &Ratio) -> Ratio {
+    let fun: &dyn Fn(&Ratio, &Ratio) -> bool = match op {
+        CompOp::Eq => &|a, b| a == b,
+        CompOp::Neq => &|a, b| a != b,
+        CompOp::Lt => &|a, b| a < b,
+        CompOp::Le => &|a, b| a <= b,
+        CompOp::Gt => &|a, b| a > b,
+        CompOp::Ge => &|a, b| a >= b,
+    };
+
+    move |a: &Ratio, b: &Ratio| -> Ratio { Ratio::from_u8(fun(a, b) as u8).unwrap() }
 }
 
 impl Executor {
@@ -198,14 +232,14 @@ impl Executor {
                     Ratio::zero()
                 }
             }),
-            UnOp::Iota => match expect_matrix!(res).scalar() {
-                None => return Err(String::from("expected scalar")),
-                Some(s) => {
-                    let upper = s.to_integer().to_usize().unwrap_or(std::usize::MAX);
-                    let values: Vec<_> = (0..upper).filter_map(Ratio::from_usize).collect();
-                    ok_matrix!(Matrix::make_vector(values))
-                }
-            },
+            UnOp::Abs => for_all!(&|x: Ratio| x.abs()),
+
+            UnOp::Iota => {
+                let s = expect_scalar!(res);
+                let upper = s.to_integer().to_usize().unwrap_or(std::usize::MAX);
+                let values: Vec<_> = (0..upper).filter_map(Ratio::from_usize).collect();
+                ok_matrix!(Matrix::make_vector(values))
+            }
         }
     }
 
@@ -272,6 +306,7 @@ impl Executor {
             BinOp::Div => apply!(|a, b| a / b),
             BinOp::Mod => apply!(|a, b| a % b),
             BinOp::Pow => apply!(pow),
+            BinOp::CompOp(x) => apply!(get_comp_op_fn(x)),
 
             BinOp::Skip => {
                 let scalar = expect_scalar!(self.execute_expr(a)?);
@@ -284,6 +319,50 @@ impl Executor {
                     shape: b_res.shape,
                 })
             }
+
+            BinOp::Rho => {
+                let shape = expect_matrix!(self.execute_expr(a)?);
+                let b_res = expect_matrix!(self.execute_expr(b)?);
+
+                let values: Vec<Ratio> = std::iter::repeat(b_res.values)
+                    .flatten()
+                    .take(shape.values.iter().map(to_f64).product::<f64>() as usize)
+                    .collect();
+
+                ok_matrix!(Matrix {
+                    values,
+                    shape: shape.values.iter().map(|x| to_f64(x) as usize).collect(),
+                })
+            }
+
+            BinOp::Unpack => {
+                let a = expect_scalar!(self.execute_expr(a)?);
+                let b = expect_scalar!(self.execute_expr(b)?);
+                if !a.is_integer() || !b.is_integer() {
+                    return Err(String::from("expected integers"));
+                }
+
+                let a_int = a.to_integer();
+                let b_int = b.to_integer();
+
+                let radix = a_int.to_u32().unwrap_or(std::u32::MAX);
+                let (sign, mut bits) = b_int.to_radix_be(radix);
+
+                let values: Vec<Ratio> = bits
+                    .drain(..)
+                    .map(|b| Ratio::from_u8(b).unwrap())
+                    .map(|b| {
+                        if sign == num_bigint::Sign::Minus {
+                            b.neg()
+                        } else {
+                            b
+                        }
+                    })
+                    .collect();
+
+                ok_matrix!(Matrix::make_vector(values))
+            }
+            BinOp::Pack => todo!(),
         }
     }
 
@@ -305,7 +384,12 @@ impl Executor {
             FoldOp::BinOp(BinOp::Div) => apply(&|a, b| a / b),
             FoldOp::BinOp(BinOp::Mod) => apply(&|a, b| a % b),
             FoldOp::BinOp(BinOp::Pow) => apply(&pow),
+            FoldOp::BinOp(BinOp::CompOp(x)) => apply(&get_comp_op_fn(x)),
+
             FoldOp::BinOp(BinOp::Skip) => apply(&|_, _| todo!()),
+            FoldOp::BinOp(BinOp::Rho) => apply(&|_, _| todo!()),
+            FoldOp::BinOp(BinOp::Unpack) => apply(&|_, _| todo!()),
+            FoldOp::BinOp(BinOp::Pack) => apply(&|_, _| todo!()),
 
             FoldOp::FunctionRef(f) => match self.variables.get(&f) {
                 None => return Err(String::from("variable not found")),
@@ -318,6 +402,7 @@ impl Executor {
                             return Err(String::from("function does not take 2 params"));
                         }
 
+                        // TODO
                         let args = matrix.values.drain(..).map(|v| Matrix::from(v));
                         self.call_function(f, args)
                     }
@@ -379,6 +464,32 @@ impl Executor {
             Expr::Unary(op, expr) => self.execute_unary(op, *expr),
             Expr::Binary(a, op, b) => self.execute_binary(op, *a, *b),
             Expr::Fold(op, expr) => self.execute_fold(op, *expr),
+
+            Expr::Index(m, indices) => {
+                let indices = expect_vector!(self.execute_expr(*indices)?);
+
+                if indices.iter().any(|i| !i.is_integer()) {
+                    return Err(String::from("expected integers"));
+                }
+
+                let m = expect_matrix!(self.execute_expr(*m)?);
+
+                if indices.len() != m.shape.len() {
+                    return Err(String::from("rank mismatch"));
+                }
+
+                let item = m.get_at(
+                    indices
+                        .iter()
+                        .map(|i| i.to_integer().to_usize().unwrap_or(std::usize::MAX))
+                        .collect(),
+                );
+
+                match item {
+                    None => Err(String::from("out of bounds")),
+                    Some(i) => ok_matrix!(Matrix::from(i.clone())),
+                }
+            }
         }
     }
 
@@ -408,7 +519,7 @@ impl Executor {
 
             Statement::Assign(var, val) => {
                 err_var_exists!(var, false);
-                let res = self.execute_expr(*val)?;
+                let res = self.execute_expr(val)?;
                 if let ExecutorResult::Value(val) = res.clone() {
                     self.variables.insert(var, val);
                 }
@@ -417,15 +528,13 @@ impl Executor {
 
             Statement::FunDeclare(name, params, expr) => {
                 err_var_exists!(name, true);
-                let f = Function {
-                    params,
-                    expr: *expr,
-                };
+                let f = Function { params, expr };
                 self.variables.insert(name, Value::Function(f));
                 Ok(ExecutorResult::None)
             }
 
-            Statement::InternalCommand(command, mut args) => {
+            Statement::InternalCommand(command, body) => {
+                /*
                 macro_rules! expect_nargs {
                     (== $count:expr) => {
                         if args.len() != $count {
@@ -443,11 +552,12 @@ impl Executor {
                         }
                     };
                 }
+                */
 
                 match command.as_str() {
                     "n" | "number" => {
-                        expect_nargs!(== 1);
-                        match self.execute_expr(args.drain(..).next().unwrap())? {
+                        //expect_nargs!(== 1);
+                        match self.execute_expr(body)? {
                             ExecutorResult::None => {
                                 Err(String::from("can't format nothing to number"))
                             }
