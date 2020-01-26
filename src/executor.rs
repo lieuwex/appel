@@ -118,7 +118,13 @@ impl Matrix {
             return None;
         }
 
-        let i: usize = indices.iter().product();
+        let mut i = 0;
+        let mut mult = 1;
+        for (dim, index) in indices.iter().enumerate() {
+            i += index * mult;
+            mult *= self.shape[dim];
+        }
+
         self.values.get(i)
     }
 }
