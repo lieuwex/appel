@@ -126,9 +126,9 @@ impl Matrix {
         return self.values.len() == 1;
     }
 
-    pub fn scalar(&self) -> Option<Ratio> {
+    pub fn scalar(&self) -> Option<&Ratio> {
         if self.is_scalar() {
-            Some(self.values[0].clone())
+            Some(&self.values[0])
         } else {
             None
         }
@@ -186,7 +186,7 @@ macro_rules! expect_scalar {
     ($v:expr) => {
         match expect_matrix!($v).scalar() {
             None => return Err(String::from("expected scalar")),
-            Some(s) => s,
+            Some(s) => s.clone(),
         }
     };
 }
@@ -217,7 +217,7 @@ impl Executor {
     }
 
     fn call_function(
-        &mut self,
+        &self,
         f: Function,
         args: impl IntoIterator<Item = Matrix>,
     ) -> Result<ExecutorResult, String> {
@@ -321,9 +321,9 @@ impl Executor {
                         .iter()
                         .map(|v| {
                             if scalar_is_left {
-                                $f(&scalar, v)
+                                $f(scalar, v)
                             } else {
-                                $f(v, &scalar)
+                                $f(v, scalar)
                             }
                         })
                         .collect(),
@@ -432,16 +432,14 @@ impl Executor {
                 None => return Err(String::from("variable not found")),
                 Some(v) => match v {
                     Value::Matrix(_) => return Err(String::from("variable is a matrix")),
-                    Value::Function(_f) => {
-                        let f = _f.clone();
-
+                    Value::Function(f) => {
                         if f.params.len() != 2 {
                             return Err(String::from("function does not take 2 params"));
                         }
 
                         // TODO
                         let args = matrix.values.drain(..).map(|v| Matrix::from(v));
-                        self.call_function(f, args)
+                        self.call_function(f.clone(), args)
                     }
                 },
             },
@@ -454,12 +452,12 @@ impl Executor {
             Expr::Atom(Atom::Ref(s)) => {
                 let var = match self.variables.get(&s) {
                     None => return Err(String::from("variable not found")),
-                    Some(var) => var,
+                    Some(var) => var.clone(),
                 };
 
                 match var {
-                    Value::Matrix(m) => ok_matrix!(m.clone()),
-                    Value::Function(f) => Ok(ExecutorResult::Value(Value::Function(f.clone()))),
+                    Value::Matrix(m) => ok_matrix!(m),
+                    Value::Function(f) => Ok(ExecutorResult::Value(Value::Function(f))),
                 }
             }
 
@@ -488,7 +486,7 @@ impl Executor {
                         for e in expressions.drain(..) {
                             let scalar = match expect_matrix!(ExecutorResult::Value(e)).scalar() {
                                 None => return Err(String::from("nested matrices aren't allowed")),
-                                Some(s) => s,
+                                Some(s) => s.clone(),
                             };
                             values.push(scalar);
                         }
@@ -557,8 +555,8 @@ impl Executor {
             Statement::Assign(var, val) => {
                 err_var_exists!(var, false);
                 let res = self.execute_expr(val)?;
-                if let ExecutorResult::Value(val) = res.clone() {
-                    self.variables.insert(var, val);
+                if let ExecutorResult::Value(val) = &res {
+                    self.variables.insert(var, val.clone());
                 }
                 Ok(res)
             }
@@ -630,8 +628,9 @@ impl Executor {
             }
         };
 
-        if let Ok(ExecutorResult::Value(Value::Matrix(m))) = res.clone() {
-            self.variables.insert(String::from("_"), Value::Matrix(m));
+        if let Ok(ExecutorResult::Value(Value::Matrix(m))) = &res {
+            self.variables
+                .insert(String::from("_"), Value::Matrix(m.clone()));
         }
 
         res
