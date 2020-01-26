@@ -435,11 +435,18 @@ impl Executor {
                     Value::Function(f) => {
                         if f.params.len() != 2 {
                             return Err(String::from("function does not take 2 params"));
+                        } else if matrix.values.len() < 2 {
+                            return Err(String::from("matrix has to have at least 2 values"));
                         }
 
-                        // TODO
-                        let args = matrix.values.drain(..).map(|v| Matrix::from(v));
-                        self.call_function(f.clone(), args)
+                        let mut it = matrix.values.drain(..);
+                        let first = it.next().unwrap();
+                        it.try_fold(Matrix::from(first), |acc, item| -> Result<Matrix, String> {
+                            let args = vec![acc, Matrix::from(item)];
+                            let m = expect_matrix!(self.call_function(f.clone(), args)?);
+                            Ok(m)
+                        })
+                        .map(|m| ExecutorResult::Value(Value::Matrix(m)))
                     }
                 },
             },
