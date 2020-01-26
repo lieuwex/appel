@@ -83,12 +83,33 @@ impl fmt::Display for Matrix {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         // TODO: actually format
 
-        for (i, val) in self.values.iter().enumerate() {
-            if i > 0 {
-                write!(f, " ")?;
+        let n_dimensions = self.shape.len();
+        match n_dimensions {
+            0 | 1 => {
+                for (i, val) in self.values.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, " ")?;
+                    }
+
+                    write!(f, "{}", val)?;
+                }
             }
 
-            write!(f, "{}", val)?;
+            2 => {
+                for i in 0..self.shape[0] {
+                    for j in 0..self.shape[1] {
+                        let val = self.get_at(vec![i, j]).unwrap();
+                        if j > 0 {
+                            write!(f, " ")?;
+                        }
+
+                        write!(f, "{}", val)?;
+                    }
+                    write!(f, "\n")?;
+                }
+            }
+
+            _ => todo!(),
         }
 
         Ok(())
