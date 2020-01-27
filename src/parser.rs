@@ -44,11 +44,12 @@ fn binary_op<'a>() -> Parser<'a, BinOp> {
 }
 
 fn check_reserved(s: String) -> Result<String, String> {
-    let chars = s.chars().collect::<Vec<_>>();
-    let parsed = binary_op().discard().name("reserved").parse(&chars).is_ok();
-    match parsed {
-        false => Ok(s),
-        true => Err(String::from("keyword is reserved")),
+    let reserved = vec!["skip", "rho", "unpack", "pack", "log", "iota", "abs", "rev"];
+
+    if reserved.iter().any(|x| *x == s) {
+        Err(String::from("keyword is reserved"))
+    } else {
+        Ok(s)
     }
 }
 
@@ -280,49 +281,52 @@ fn p_expr_6<'a>() -> Parser<'a, Expr> {
 }
 
 fn p_expr_7<'a>() -> Parser<'a, Expr> {
-    let op_un = operator("iota").map(|_| UnOp::Iota)
-        | operator("abs").map(|_| UnOp::Abs)
-        | operator("rho").map(|_| UnOp::Rho)
-        | operator("rev").map(|_| UnOp::Rev);
+    let op_un = symbol(operator("iota")).map(|_| UnOp::Iota)
+        | symbol(operator("abs")).map(|_| UnOp::Abs)
+        | symbol(operator("rho")).map(|_| UnOp::Rho)
+        | symbol(operator("rev")).map(|_| UnOp::Rev);
 
-    let op_bin = symbol(operator("skip")).map(|_| BinOp::Skip)
-        | symbol(operator("rho")).map(|_| BinOp::Rho)
-        | symbol(operator("unpack")).map(|_| BinOp::Unpack)
-        | symbol(operator("pack")).map(|_| BinOp::Pack)
-        | symbol(operator("log")).map(|_| BinOp::Log);
-
-    (op_un.repeat(1..) + call(p_expr))
+    (op_un.repeat(0..) + call(p_expr_6))
         .map(|(mut ops, ex)| {
             ops.drain(..)
                 .rev()
                 .fold(ex, |acc, op| Expr::Unary(op, Box::new(acc)))
         })
         .name("special unary")
-        | left_recurse(p_expr_6, op_bin, "special binary", |e1, op, e2| {
-            Expr::Binary(Box::new(e1), op, Box::new(e2))
-        })
+}
+
+fn p_expr_8<'a>() -> Parser<'a, Expr> {
+    let op_bin = symbol(operator("skip")).map(|_| BinOp::Skip)
+        | symbol(operator("rho")).map(|_| BinOp::Rho)
+        | symbol(operator("unpack")).map(|_| BinOp::Unpack)
+        | symbol(operator("pack")).map(|_| BinOp::Pack)
+        | symbol(operator("log")).map(|_| BinOp::Log);
+
+    left_recurse(p_expr_7, op_bin, "special binary", |e1, op, e2| {
+        Expr::Binary(Box::new(e1), op, Box::new(e2))
+    })
 }
 
 /// Fold
-fn p_expr_8<'a>() -> Parser<'a, Expr> {
+fn p_expr_9<'a>() -> Parser<'a, Expr> {
     let op_p = binary_op().map(FoldOp::BinOp) | p_varname().map(FoldOp::FunctionRef);
     let fold = (op_p - symbol(operator("//")) + call(p_expr))
         .map(|(op, expr)| Expr::Fold(op, Box::new(expr)));
 
-    (fold).name("fold") | p_expr_7()
+    (fold).name("fold") | p_expr_8()
 }
 
 /// Matrix index
-fn p_expr_9<'a>() -> Parser<'a, Expr> {
-    let op_p = call(p_expr_8) - symbol(operator("[")) + call(p_expr) - symbol(operator("]"));
+fn p_expr_10<'a>() -> Parser<'a, Expr> {
+    let op_p = call(p_expr_9) - symbol(operator("[")) + call(p_expr) - symbol(operator("]"));
 
     op_p.map(|(a, b)| Expr::Index(Box::new(a), Box::new(b)))
         .name("index")
-        | p_expr_8()
+        | p_expr_9()
 }
 
 fn p_expr<'a>() -> Parser<'a, Expr> {
-    p_expr_9()
+    p_expr_10()
 }
 
 /// Function declare
