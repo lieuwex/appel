@@ -34,26 +34,26 @@ fn right_recurse<'a, E: 'a, O: 'a>(
 }
 
 fn comp_op<'a>() -> Parser<'a, CompOp> {
-    symbol(operator("==")).map(|_| CompOp::Eq)
-        | symbol(operator("!=")).map(|_| CompOp::Neq)
-        | symbol(operator("<")).map(|_| CompOp::Lt)
-        | symbol(operator("<=")).map(|_| CompOp::Le)
-        | symbol(operator(">")).map(|_| CompOp::Gt)
-        | symbol(operator(">=")).map(|_| CompOp::Ge)
+    operator("==").map(|_| CompOp::Eq)
+        | operator("!=").map(|_| CompOp::Neq)
+        | operator("<").map(|_| CompOp::Lt)
+        | operator("<=").map(|_| CompOp::Le)
+        | operator(">").map(|_| CompOp::Gt)
+        | operator(">=").map(|_| CompOp::Ge)
 }
 
 fn binary_op<'a>() -> Parser<'a, BinOp> {
-    symbol(operator("skip")).map(|_| BinOp::Skip)
-        | symbol(operator("rho")).map(|_| BinOp::Rho)
-        | symbol(operator("unpack")).map(|_| BinOp::Unpack)
-        | symbol(operator("pack")).map(|_| BinOp::Pack)
-        | symbol(operator("log")).map(|_| BinOp::Log)
-        | symbol(operator("**")).map(|_| BinOp::Pow)
-        | symbol(operator("*")).map(|_| BinOp::Mul)
-        | symbol(operator("/")).map(|_| BinOp::Div)
-        | symbol(operator("%")).map(|_| BinOp::Mod)
-        | symbol(operator("+")).map(|_| BinOp::Add)
-        | symbol(operator("-")).map(|_| BinOp::Sub)
+    operator("skip").map(|_| BinOp::Skip)
+        | operator("rho").map(|_| BinOp::Rho)
+        | operator("unpack").map(|_| BinOp::Unpack)
+        | operator("pack").map(|_| BinOp::Pack)
+        | operator("log").map(|_| BinOp::Log)
+        | operator("**").map(|_| BinOp::Pow)
+        | operator("*").map(|_| BinOp::Mul)
+        | operator("/").map(|_| BinOp::Div)
+        | operator("%").map(|_| BinOp::Mod)
+        | operator("+").map(|_| BinOp::Add)
+        | operator("-").map(|_| BinOp::Sub)
         | comp_op().map(BinOp::CompOp)
 }
 
@@ -65,20 +65,6 @@ fn check_reserved(s: String) -> Result<String, String> {
     } else {
         Ok(s)
     }
-}
-
-fn unary<'a>() -> Parser<'a, UnOp> {
-    (operator("+").map(|_| UnOp::Id)
-        | operator("-").map(|_| UnOp::Neg)
-        | operator("!").map(|_| UnOp::Not))
-    .name("unary")
-}
-fn p_unary_and_then<'a>(p: Parser<'a, Expr>) -> Parser<'a, Expr> {
-    (unary().repeat(0..) + p).map(|(mut ops, ex)| {
-        ops.drain(..)
-            .rev()
-            .fold(ex, |acc, op| Expr::Unary(op, Box::new(acc)))
-    })
 }
 
 fn one_whitespace<'a>() -> Parser<'a, ()> {
@@ -242,27 +228,38 @@ fn p_atom<'a>() -> Parser<'a, Atom> {
 /// Parenthesised expression or plain atom
 fn p_expr_0<'a>() -> Parser<'a, Expr> {
     (symbol(operator("(")) * call(p_expr) - symbol(operator(")"))).name("paren")
-        | p_unary_and_then(call(p_atom).map(Expr::Atom))
-        | p_atom().map(Expr::Atom)
+        | call(p_atom).map(Expr::Atom)
+}
+
+fn p_expr_1<'a>() -> Parser<'a, Expr> {
+    let unary = operator("+").map(|_| UnOp::Id)
+        | operator("-").map(|_| UnOp::Neg)
+        | operator("!").map(|_| UnOp::Not);
+
+    (unary.repeat(0..) + call(p_expr_0))
+        .name("unary")
+        .map(|(mut ops, ex)| {
+            ops.drain(..)
+                .rev()
+                .fold(ex, |acc, op| Expr::Unary(op, Box::new(acc)))
+        })
 }
 
 /// Vector of atom-like things
-fn p_expr_1<'a>() -> Parser<'a, Expr> {
-    list(call(p_expr_0), whitespace())
+fn p_expr_2<'a>() -> Parser<'a, Expr> {
+    list(call(p_expr_1), whitespace())
         .map(|v| Expr::Vector(v.to_vec()))
         .name("vector")
 }
 
 /// Binary comparison operators
-fn p_expr_2<'a>() -> Parser<'a, Expr> {
-    left_recurse(p_expr_1, comp_op(), "binary comparison", |e1, op, e2| {
-        Expr::Binary(Box::new(e1), BinOp::CompOp(op), Box::new(e2))
-    })
-}
-
-/// Unary operators on a vector
 fn p_expr_3<'a>() -> Parser<'a, Expr> {
-    p_unary_and_then(call(p_expr_2))
+    left_recurse(
+        p_expr_2,
+        symbol(comp_op()),
+        "binary comparison",
+        |e1, op, e2| Expr::Binary(Box::new(e1), BinOp::CompOp(op), Box::new(e2)),
+    )
 }
 
 /// Power (**) of unary'd vector
@@ -323,7 +320,7 @@ fn p_expr_8<'a>() -> Parser<'a, Expr> {
 
 /// Fold
 fn p_expr_9<'a>() -> Parser<'a, Expr> {
-    let op_p = binary_op().map(FoldOp::BinOp) | p_varname().map(FoldOp::FunctionRef);
+    let op_p = symbol(binary_op()).map(FoldOp::BinOp) | p_varname().map(FoldOp::FunctionRef);
     let fold = (op_p - symbol(operator("//")) + call(p_expr))
         .map(|(op, expr)| Expr::Fold(op, Box::new(expr)));
 
