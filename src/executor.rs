@@ -302,7 +302,11 @@ fn call_binary(op: BinOp, a: Matrix, mut b: Matrix) -> Result<ExecutorResult, St
         }
 
         BinOp::Rho => {
-            let shape: Vec<usize> = a.values.iter().map(|v| to_f64(v) as usize).collect();
+            let shape: Vec<usize> = a
+                .values
+                .iter()
+                .map(|v| v.to_integer().to_usize().unwrap_or(std::usize::MAX))
+                .collect();
 
             let values: Vec<Ratio> = std::iter::repeat(b.values)
                 .flatten()
