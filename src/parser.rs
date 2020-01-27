@@ -1,7 +1,7 @@
-use num_bigint::{BigInt, BigUint};
-use num_traits::{Pow, One, Zero};
-use pom::{self, parser::*};
 use crate::ast::*;
+use num_bigint::{BigInt, BigUint};
+use num_traits::{One, Pow, Zero};
+use pom::{self, parser::*};
 
 type Parser<'a, T> = pom::parser::Parser<'a, char, T>;
 
@@ -9,37 +9,40 @@ fn left_recurse<'a, E: 'a, O: 'a>(
     atom_p: impl Fn() -> Parser<'a, E>,
     op_p: impl Fn() -> Parser<'a, O>,
     name: &'a str,
-    combine: impl Fn(E, O, E) -> E + 'a
+    combine: impl Fn(E, O, E) -> E + 'a,
 ) -> Parser<'a, E> {
-    (atom_p() + (op_p() + atom_p()).repeat(0..)).map(move |(mut expr, v)| {
-        for (op, expr2) in v {
-            expr = combine(expr, op, expr2);
-        }
-        expr
-    }).name(name)
+    (atom_p() + (op_p() + atom_p()).repeat(0..))
+        .map(move |(mut expr, v)| {
+            for (op, expr2) in v {
+                expr = combine(expr, op, expr2);
+            }
+            expr
+        })
+        .name(name)
 }
 
 fn comp_op<'a>() -> Parser<'a, CompOp> {
     symbol(operator("==")).map(|_| CompOp::Eq)
-    | symbol(operator("!=")).map(|_| CompOp::Neq)
-    | symbol(operator("<")).map(|_| CompOp::Lt)
-    | symbol(operator("<=")).map(|_| CompOp::Le)
-    | symbol(operator(">")).map(|_| CompOp::Gt)
-    | symbol(operator(">=")).map(|_| CompOp::Ge)
+        | symbol(operator("!=")).map(|_| CompOp::Neq)
+        | symbol(operator("<")).map(|_| CompOp::Lt)
+        | symbol(operator("<=")).map(|_| CompOp::Le)
+        | symbol(operator(">")).map(|_| CompOp::Gt)
+        | symbol(operator(">=")).map(|_| CompOp::Ge)
 }
 
 fn binary_op<'a>() -> Parser<'a, BinOp> {
     symbol(operator("skip")).map(|_| BinOp::Skip)
-    | symbol(operator("rho")).map(|_| BinOp::Rho)
-    | symbol(operator("unpack")).map(|_| BinOp::Unpack)
-    | symbol(operator("pack")).map(|_| BinOp::Pack)
-    | symbol(operator("**")).map(|_| BinOp::Pow)
-    | symbol(operator("*")).map(|_| BinOp::Mul)
-    | symbol(operator("/")).map(|_| BinOp::Div)
-    | symbol(operator("%")).map(|_| BinOp::Mod)
-    | symbol(operator("+")).map(|_| BinOp::Add)
-    | symbol(operator("-")).map(|_| BinOp::Sub)
-    | comp_op().map(BinOp::CompOp)
+        | symbol(operator("rho")).map(|_| BinOp::Rho)
+        | symbol(operator("unpack")).map(|_| BinOp::Unpack)
+        | symbol(operator("pack")).map(|_| BinOp::Pack)
+        | symbol(operator("log")).map(|_| BinOp::Log)
+        | symbol(operator("**")).map(|_| BinOp::Pow)
+        | symbol(operator("*")).map(|_| BinOp::Mul)
+        | symbol(operator("/")).map(|_| BinOp::Div)
+        | symbol(operator("%")).map(|_| BinOp::Mod)
+        | symbol(operator("+")).map(|_| BinOp::Add)
+        | symbol(operator("-")).map(|_| BinOp::Sub)
+        | comp_op().map(BinOp::CompOp)
 }
 
 fn check_reserved(s: String) -> Result<String, String> {
@@ -52,7 +55,10 @@ fn check_reserved(s: String) -> Result<String, String> {
 }
 
 fn whitespace<'a>() -> Parser<'a, ()> {
-    is_a(|c: char| c.is_ascii_whitespace()).repeat(0..).discard().name("whitespace")
+    is_a(|c: char| c.is_ascii_whitespace())
+        .repeat(0..)
+        .discard()
+        .name("whitespace")
 }
 
 fn symbol<'a, T: 'a>(p: Parser<'a, T>) -> Parser<'a, T> {
@@ -74,9 +80,13 @@ fn integer_hex(s: &[char]) -> Result<BigUint, &str> {
 
     let from_hex_digit = |c: char| {
         let c = c.to_ascii_lowercase();
-        if '0' <= c && c <= '9' { Ok((c as u8) - ('0' as u8)) }
-        else if 'a' <= c && c <= 'f' { Ok((c as u8) - ('a' as u8) + 10) }
-        else { Err("Invalid argument to from_hex_digit") }
+        if '0' <= c && c <= '9' {
+            Ok((c as u8) - ('0' as u8))
+        } else if 'a' <= c && c <= 'f' {
+            Ok((c as u8) - ('a' as u8) + 10)
+        } else {
+            Err("Invalid argument to from_hex_digit")
+        }
     };
 
     let num_bytes = (s.len() + 1) / 2;
@@ -91,8 +101,8 @@ fn integer_hex(s: &[char]) -> Result<BigUint, &str> {
     };
 
     for i in 0..num_full_bytes {
-        let c1 = s[2*i];
-        let c2 = s[2*i+1];
+        let c1 = s[2 * i];
+        let c2 = s[2 * i + 1];
         bytes.push(16 * from_hex_digit(c1)? + from_hex_digit(c2)?);
     }
 
@@ -103,7 +113,8 @@ fn p_hexdigit<'a>() -> Parser<'a, char> {
     is_a(|c: char| {
         let c = c.to_ascii_lowercase();
         ('0' <= c && c <= '9') || ('a' <= c && c <= 'f')
-    }).name("hex")
+    })
+    .name("hex")
 }
 
 fn p_digit<'a>() -> Parser<'a, char> {
@@ -116,27 +127,42 @@ fn p_posexp<'a>() -> Parser<'a, BigUint> {
 }
 
 fn negative<'a, T: 'static>(p: Parser<'a, T>) -> Parser<'a, T>
-        where T: std::ops::Neg<Output = T> {
+where
+    T: std::ops::Neg<Output = T>,
+{
     let p_sign = sym('-').opt().map(|o| o.is_some());
-    (p_sign + p).map(|(s, v)| if s { -v } else { v }).name("neg")
+    (p_sign + p)
+        .map(|(s, v)| if s { -v } else { v })
+        .name("neg")
 }
 
 fn p_exp<'a>() -> Parser<'a, BigInt> {
-    sym('e') * negative(p_digit().repeat(1..).collect().convert(integer_decimal).map(BigInt::from))
+    sym('e')
+        * negative(
+            p_digit()
+                .repeat(1..)
+                .collect()
+                .convert(integer_decimal)
+                .map(BigInt::from),
+        )
         | empty().map(|_| Zero::zero())
 }
 
 fn p_int<'a>() -> Parser<'a, Atom> {
     let p = (tag("0x") * p_hexdigit().repeat(1..))
-                .collect().convert(integer_hex)
-            | (p_digit().repeat(1..).collect().convert(integer_decimal) + p_posexp())
-                .map(|(b, e)| b * BigUint::from(10u32).pow(e));
-    negative(p.map(BigInt::from)).map(Ratio::from).map(Atom::Rat).name("int")
+        .collect()
+        .convert(integer_hex)
+        | (p_digit().repeat(1..).collect().convert(integer_decimal) + p_posexp())
+            .map(|(b, e)| b * BigUint::from(10u32).pow(e));
+    negative(p.map(BigInt::from))
+        .map(Ratio::from)
+        .map(Atom::Rat)
+        .name("int")
 }
 
 fn p_float<'a>() -> Parser<'a, Atom> {
     let p = (p_digit().repeat(1..) + sym('.') + p_digit().repeat(0..) + p_exp())
-            | (p_digit().repeat(0..) + sym('.') + p_digit().repeat(1..) + p_exp());
+        | (p_digit().repeat(0..) + sym('.') + p_digit().repeat(1..) + p_exp());
 
     let p_ratio = p.convert(|(((pre, _), post), exp)| {
         let ten = BigUint::from(10u32);
@@ -144,9 +170,7 @@ fn p_float<'a>() -> Parser<'a, Atom> {
         let base_num = integer_decimal(&pre)? * &comma_exp + integer_decimal(&post)?;
         let base_rat = Ratio::from((BigInt::from(base_num), BigInt::from(comma_exp)));
         Ok(match exp.to_biguint() {
-            Some(pos_exp) => {
-                base_rat * Ratio::from(BigInt::from(ten.pow(pos_exp)))
-            }
+            Some(pos_exp) => base_rat * Ratio::from(BigInt::from(ten.pow(pos_exp))),
 
             None => {
                 let exp_pow = BigInt::from(ten.pow((-exp).to_biguint().unwrap()));
@@ -160,11 +184,13 @@ fn p_float<'a>() -> Parser<'a, Atom> {
 }
 
 fn p_varname<'a>() -> Parser<'a, String> {
-    let name =
-        is_a(|c: char| c.is_alphabetic() || c == '_')
+    let name = is_a(|c: char| c.is_alphabetic() || c == '_')
         + is_a(|c: char| c.is_alphanumeric() || c == '_').repeat(0..);
 
-    let op = name.collect().map(|s| s.iter().collect::<String>()).name("variable name");
+    let op = name
+        .collect()
+        .map(|s| s.iter().collect::<String>())
+        .name("variable name");
 
     op.convert(check_reserved)
 }
@@ -179,17 +205,23 @@ fn p_atom<'a>() -> Parser<'a, Atom> {
 
 /// Parenthesised expression or plain atom
 fn p_expr_0<'a>() -> Parser<'a, Expr> {
-    (symbol(operator("(")) * call(p_expr) - symbol(operator(")"))).name("paren") | p_atom().map(Expr::Atom)
+    (symbol(operator("(")) * call(p_expr) - symbol(operator(")"))).name("paren")
+        | p_atom().map(Expr::Atom)
 }
 
 /// Vector of atom-like things
 fn p_expr_1<'a>() -> Parser<'a, Expr> {
-    p_expr_0().repeat(1..).map(|v| Expr::Vector(v.to_vec())).name("vector")
+    p_expr_0()
+        .repeat(1..)
+        .map(|v| Expr::Vector(v.to_vec()))
+        .name("vector")
 }
 
 /// Binary comparison operators
 fn p_expr_2<'a>() -> Parser<'a, Expr> {
-    left_recurse(p_expr_1, comp_op, "binary comparison", |e1, op, e2| Expr::Binary(Box::new(e1), BinOp::CompOp(op), Box::new(e2)))
+    left_recurse(p_expr_1, comp_op, "binary comparison", |e1, op, e2| {
+        Expr::Binary(Box::new(e1), BinOp::CompOp(op), Box::new(e2))
+    })
 }
 
 /// Unary operators on a vector
@@ -197,12 +229,14 @@ fn p_expr_3<'a>() -> Parser<'a, Expr> {
     fn p_unary<'a>() -> Parser<'a, UnOp> {
         symbol(
             operator("+").map(|_| UnOp::Id)
-            | operator("-").map(|_| UnOp::Neg)
-            | operator("!").map(|_| UnOp::Not)
-            | operator("iota").map(|_| UnOp::Iota)
-            | operator("abs").map(|_| UnOp::Abs)
-            | operator("rho").map(|_| UnOp::Rho)
-        ).name("unary")
+                | operator("-").map(|_| UnOp::Neg)
+                | operator("!").map(|_| UnOp::Not)
+                | operator("iota").map(|_| UnOp::Iota)
+                | operator("abs").map(|_| UnOp::Abs)
+                | operator("rho").map(|_| UnOp::Rho)
+                | operator("rev").map(|_| UnOp::Rev),
+        )
+        .name("unary")
     }
 
     (p_unary().repeat(0..) + p_expr_2()).map(|(ops, mut ex)| {
@@ -216,37 +250,51 @@ fn p_expr_3<'a>() -> Parser<'a, Expr> {
 /// Power (**) of unary'd vector
 fn p_expr_4<'a>() -> Parser<'a, Expr> {
     let op_p = || symbol(operator("**")).map(|_| BinOp::Pow);
-    left_recurse(p_expr_3, op_p, "power", |e1, op, e2| Expr::Binary(Box::new(e1), op, Box::new(e2)))
+    left_recurse(p_expr_3, op_p, "power", |e1, op, e2| {
+        Expr::Binary(Box::new(e1), op, Box::new(e2))
+    })
 }
 
 /// Product (*, /, %) of powers
 fn p_expr_5<'a>() -> Parser<'a, Expr> {
-    let op_p = || symbol(operator("*")).map(|_| BinOp::Mul)
-                    | symbol(operator("/")).map(|_| BinOp::Div)
-                    | symbol(operator("%")).map(|_| BinOp::Mod);
-    left_recurse(p_expr_4, op_p, "product", |e1, op, e2| Expr::Binary(Box::new(e1), op, Box::new(e2)))
+    let op_p = || {
+        symbol(operator("*")).map(|_| BinOp::Mul)
+            | symbol(operator("/")).map(|_| BinOp::Div)
+            | symbol(operator("%")).map(|_| BinOp::Mod)
+    };
+    left_recurse(p_expr_4, op_p, "product", |e1, op, e2| {
+        Expr::Binary(Box::new(e1), op, Box::new(e2))
+    })
 }
 
 /// Sum (+, -) of products
 fn p_expr_6<'a>() -> Parser<'a, Expr> {
-    let op_p = || symbol(operator("+")).map(|_| BinOp::Add)
-                    | symbol(operator("-")).map(|_| BinOp::Sub);
-    left_recurse(p_expr_5, op_p, "sum", |e1, op, e2| Expr::Binary(Box::new(e1), op, Box::new(e2)))
+    let op_p =
+        || symbol(operator("+")).map(|_| BinOp::Add) | symbol(operator("-")).map(|_| BinOp::Sub);
+    left_recurse(p_expr_5, op_p, "sum", |e1, op, e2| {
+        Expr::Binary(Box::new(e1), op, Box::new(e2))
+    })
 }
 
 fn p_expr_7<'a>() -> Parser<'a, Expr> {
-    let op_p = || symbol(operator("skip")).map(|_| BinOp::Skip)
-                    | symbol(operator("rho")).map(|_| BinOp::Rho)
-                    | symbol(operator("unpack")).map(|_| BinOp::Unpack)
-                    | symbol(operator("pack")).map(|_| BinOp::Pack);
+    let op_p = || {
+        symbol(operator("skip")).map(|_| BinOp::Skip)
+            | symbol(operator("rho")).map(|_| BinOp::Rho)
+            | symbol(operator("unpack")).map(|_| BinOp::Unpack)
+            | symbol(operator("pack")).map(|_| BinOp::Pack)
+            | symbol(operator("log")).map(|_| BinOp::Log)
+    };
 
-    left_recurse(p_expr_6, op_p, "special", |e1, op, e2| Expr::Binary(Box::new(e1), op, Box::new(e2)))
+    left_recurse(p_expr_6, op_p, "special", |e1, op, e2| {
+        Expr::Binary(Box::new(e1), op, Box::new(e2))
+    })
 }
 
 /// Fold
 fn p_expr_8<'a>() -> Parser<'a, Expr> {
     let op_p = || binary_op().map(FoldOp::BinOp) | p_varname().map(FoldOp::FunctionRef);
-    let fold = (op_p() - symbol(operator("//")) + call(p_expr)).map(|(op, expr)| Expr::Fold(op, Box::new(expr)));
+    let fold = (op_p() - symbol(operator("//")) + call(p_expr))
+        .map(|(op, expr)| Expr::Fold(op, Box::new(expr)));
 
     (fold).name("fold") | p_expr_7()
 }
@@ -255,7 +303,9 @@ fn p_expr_8<'a>() -> Parser<'a, Expr> {
 fn p_expr_9<'a>() -> Parser<'a, Expr> {
     let op_p = || call(p_expr_8) - symbol(operator("[")) + call(p_expr) - symbol(operator("]"));
 
-    op_p().map(|(a, b)| Expr::Index(Box::new(a), Box::new(b))).name("index")
+    op_p()
+        .map(|(a, b)| Expr::Index(Box::new(a), Box::new(b)))
+        .name("index")
         | p_expr_8()
 }
 
@@ -265,32 +315,30 @@ fn p_expr<'a>() -> Parser<'a, Expr> {
 
 /// Function declare
 fn p_fun<'a>() -> Parser<'a, Statement> {
-    (
-        operator("fn") * symbol(p_varname())
-        + symbol(p_varname()).repeat(1..) - symbol(operator("="))
-        + call(p_expr)
-    ).map(|((fnname, args), body)| Statement::FunDeclare(fnname, args, body)).name("function")
+    (operator("fn") * symbol(p_varname()) + symbol(p_varname()).repeat(1..) - symbol(operator("="))
+        + call(p_expr))
+    .map(|((fnname, args), body)| Statement::FunDeclare(fnname, args, body))
+    .name("function")
 }
 
 /// Variable assignment
 fn p_assign<'a>() -> Parser<'a, Statement> {
-    (
-        symbol(p_varname())
-        - symbol(operator("="))
-        + call(p_expr)
-    ).map(|(name, body)| Statement::Assign(name, body)).name("assign")
+    (symbol(p_varname()) - symbol(operator("=")) + call(p_expr))
+        .map(|(name, body)| Statement::Assign(name, body))
+        .name("assign")
 }
 
 /// Internal command
 fn p_command<'a>() -> Parser<'a, Statement> {
-    let not_whitespace_word = || is_a(|c: char| !c.is_ascii_whitespace()).repeat(1..).map(|x| x.iter().collect::<String>());
+    let not_whitespace_word = || {
+        is_a(|c: char| !c.is_ascii_whitespace())
+            .repeat(1..)
+            .map(|x| x.iter().collect::<String>())
+    };
 
-    (
-        symbol(operator(")"))
-        * not_whitespace_word()
-        - whitespace()
-        + call(p_expr)
-    ).map(|(name, expr)| Statement::InternalCommand(name, expr)).name("assign")
+    (symbol(operator(")")) * not_whitespace_word() - whitespace() + call(p_expr))
+        .map(|(name, expr)| Statement::InternalCommand(name, expr))
+        .name("assign")
 }
 
 fn p_statement<'a>() -> Parser<'a, Statement> {

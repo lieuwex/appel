@@ -10,6 +10,7 @@ pub enum UnOp {
     Iota,
     Abs,
     Rho,
+    Rev,
 }
 
 impl fmt::Display for UnOp {
@@ -21,6 +22,7 @@ impl fmt::Display for UnOp {
             UnOp::Iota => write!(f, "iota"),
             UnOp::Abs => write!(f, "abs"),
             UnOp::Rho => write!(f, "rho"),
+            UnOp::Rev => write!(f, "rev"),
         }
     }
 }
@@ -59,6 +61,7 @@ pub enum BinOp {
 
     CompOp(CompOp),
 
+    Log,
     Skip,
     Rho,
     Unpack,
@@ -77,6 +80,7 @@ impl fmt::Display for BinOp {
 
             BinOp::CompOp(x) => write!(f, "{}", x),
 
+            BinOp::Log => write!(f, "log"),
             BinOp::Skip => write!(f, "skip"),
             BinOp::Rho => write!(f, "rho"),
             BinOp::Unpack => write!(f, "unpack"),
