@@ -165,10 +165,10 @@ fn p_int<'a>() -> Parser<'a, Atom> {
 }
 
 fn p_float<'a>() -> Parser<'a, Atom> {
-    let p = (p_digit().repeat(1..) + sym('.') + p_digit().repeat(0..) + p_exp())
-        | (p_digit().repeat(0..) + sym('.') + p_digit().repeat(1..) + p_exp());
+    let p = (p_digit().repeat(1..) - sym('.') + p_digit().repeat(0..) + p_exp())
+        | (p_digit().repeat(0..) - sym('.') + p_digit().repeat(1..) + p_exp());
 
-    let p_ratio = p.convert(|(((pre, _), post), exp)| {
+    let p_ratio = p.convert(|((pre, post), exp)| {
         let ten = BigUint::from(10u32);
         let comma_exp = ten.pow(post.len());
         let base_num = integer_decimal(&pre)? * &comma_exp + integer_decimal(&post)?;
