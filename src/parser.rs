@@ -18,6 +18,20 @@ fn left_recurse<'a, E: 'a, O: 'a>(
         })
         .name(name)
 }
+fn right_recurse<'a, E: 'a, O: 'a>(
+    atom_p: impl Fn() -> Parser<'a, E>,
+    op_p: Parser<'a, O>,
+    name: &'a str,
+    combine: impl Fn(E, O, E) -> E + 'a,
+) -> Parser<'a, E> {
+    ((atom_p() + op_p).repeat(0..) + atom_p())
+        .map(move |(mut v, expr)| {
+            v.drain(..)
+                .rev()
+                .fold(expr, |acc, (expr1, op)| combine(expr1, op, acc))
+        })
+        .name(name)
+}
 
 fn comp_op<'a>() -> Parser<'a, CompOp> {
     symbol(operator("==")).map(|_| CompOp::Eq)
@@ -302,7 +316,7 @@ fn p_expr_8<'a>() -> Parser<'a, Expr> {
         | symbol(operator("pack")).map(|_| BinOp::Pack)
         | symbol(operator("log")).map(|_| BinOp::Log);
 
-    left_recurse(p_expr_7, op_bin, "special binary", |e1, op, e2| {
+    right_recurse(p_expr_7, op_bin, "special binary", |e1, op, e2| {
         Expr::Binary(Box::new(e1), op, Box::new(e2))
     })
 }
