@@ -52,11 +52,30 @@ fn check_reserved(s: String) -> Result<String, String> {
     }
 }
 
-fn whitespace<'a>() -> Parser<'a, ()> {
+fn unary<'a>() -> Parser<'a, UnOp> {
+    (operator("+").map(|_| UnOp::Id)
+        | operator("-").map(|_| UnOp::Neg)
+        | operator("!").map(|_| UnOp::Not))
+    .name("unary")
+}
+fn p_unary_and_then<'a>(p: Parser<'a, Expr>) -> Parser<'a, Expr> {
+    (unary().repeat(0..) + p).map(|(mut ops, ex)| {
+        ops.drain(..)
+            .rev()
+            .fold(ex, |acc, op| Expr::Unary(op, Box::new(acc)))
+    })
+}
+
+fn one_whitespace<'a>() -> Parser<'a, ()> {
     is_a(|c: char| c.is_ascii_whitespace())
-        .repeat(0..)
         .discard()
         .name("whitespace")
+}
+fn whitespace<'a>() -> Parser<'a, ()> {
+    one_whitespace()
+        .repeat(0..)
+        .discard()
+        .name("optional whitespace")
 }
 
 fn symbol<'a, T: 'a>(p: Parser<'a, T>) -> Parser<'a, T> {
@@ -202,19 +221,19 @@ fn p_var<'a>() -> Parser<'a, Atom> {
 }
 
 fn p_atom<'a>() -> Parser<'a, Atom> {
-    symbol(p_float() | p_int() | p_var()).name("atom")
+    p_float() | p_int() | p_var().name("atom")
 }
 
 /// Parenthesised expression or plain atom
 fn p_expr_0<'a>() -> Parser<'a, Expr> {
     (symbol(operator("(")) * call(p_expr) - symbol(operator(")"))).name("paren")
+        | p_unary_and_then(call(p_atom).map(Expr::Atom))
         | p_atom().map(Expr::Atom)
 }
 
 /// Vector of atom-like things
 fn p_expr_1<'a>() -> Parser<'a, Expr> {
-    p_expr_0()
-        .repeat(1..)
+    list(call(p_expr_0), whitespace())
         .map(|v| Expr::Vector(v.to_vec()))
         .name("vector")
 }
@@ -228,18 +247,7 @@ fn p_expr_2<'a>() -> Parser<'a, Expr> {
 
 /// Unary operators on a vector
 fn p_expr_3<'a>() -> Parser<'a, Expr> {
-    let p_unary = symbol(
-        operator("+").map(|_| UnOp::Id)
-            | operator("-").map(|_| UnOp::Neg)
-            | operator("!").map(|_| UnOp::Not),
-    )
-    .name("unary");
-
-    (p_unary.repeat(0..) + call(p_expr_2)).map(|(mut ops, ex)| {
-        ops.drain(..)
-            .rev()
-            .fold(ex, |acc, op| Expr::Unary(op, Box::new(acc)))
-    })
+    p_unary_and_then(call(p_expr_2))
 }
 
 /// Power (**) of unary'd vector
@@ -262,8 +270,10 @@ fn p_expr_5<'a>() -> Parser<'a, Expr> {
 
 /// Sum (+, -) of products
 fn p_expr_6<'a>() -> Parser<'a, Expr> {
-    let op_p =
-        symbol(operator("+")).map(|_| BinOp::Add) | symbol(operator("-")).map(|_| BinOp::Sub);
+    let op_no_spaces = || sym('+').map(|_| BinOp::Add) | sym('-').map(|_| BinOp::Sub);
+    let op_p = (one_whitespace().repeat(1..) * op_no_spaces() - one_whitespace().repeat(1..))
+        | (op_no_spaces() - whitespace());
+
     left_recurse(p_expr_5, op_p, "sum", |e1, op, e2| {
         Expr::Binary(Box::new(e1), op, Box::new(e2))
     })
@@ -349,6 +359,6 @@ fn p_statement<'a>() -> Parser<'a, Statement> {
 
 pub fn parse(source: &str) -> Result<Statement, pom::Error> {
     let chars = source.chars().collect::<Vec<_>>();
-    let res = (p_statement() - whitespace() - end()).parse(&chars);
+    let res = (whitespace() * p_statement() - whitespace() - end()).parse(&chars);
     res
 }
