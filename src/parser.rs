@@ -70,7 +70,11 @@ fn operator<'a>(text: &'static str) -> Parser<'a, ()> {
 }
 
 fn integer_decimal(s: &[char]) -> Result<BigUint, num_bigint::ParseBigIntError> {
-    s.iter().collect::<String>().parse::<BigUint>()
+    if s.len() == 0 {
+        Ok(BigUint::zero())
+    } else {
+        s.iter().collect::<String>().parse::<BigUint>()
+    }
 }
 
 fn integer_hex(s: &[char]) -> Result<BigUint, &str> {
