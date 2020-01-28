@@ -489,7 +489,7 @@ impl Executor {
             }
 
             FoldOp::FunctionRef(f) => match self.variables.get(&f) {
-                None => return Err(String::from("variable not found")),
+                None => return Err(format!("variable {} not found", f)),
                 Some(v) => match v {
                     Value::Matrix(_) => return Err(String::from("variable is a matrix")),
                     Value::Function(f) => {
@@ -516,7 +516,7 @@ impl Executor {
             Expr::Atom(Atom::Rat(v)) => ok_matrix!(v),
             Expr::Atom(Atom::Ref(s)) => {
                 let var = match self.variables.get(&s) {
-                    None => return Err(String::from("variable not found")),
+                    None => return Err(format!("variable {} not found", s)),
                     Some(var) => var.clone(),
                 };
 
