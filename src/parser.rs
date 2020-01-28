@@ -176,7 +176,7 @@ fn p_int<'a>() -> Parser<'a, Atom> {
         .convert(integer_hex)
         | (p_digit().repeat(1..).collect().convert(integer_decimal) + p_posexp())
             .map(|(b, e)| b * BigUint::from(10u32).pow(e));
-    p.map(BigInt::from)
+    negative(p.map(BigInt::from))
         .map(Ratio::from)
         .map(Atom::Rat)
         .name("int")
@@ -202,7 +202,7 @@ fn p_float<'a>() -> Parser<'a, Atom> {
         }) as Result<Ratio, num_bigint::ParseBigIntError>
     });
 
-    p_ratio.map(Atom::Rat).name("float")
+    negative(p_ratio).map(Atom::Rat).name("float")
 }
 
 fn p_varname<'a>() -> Parser<'a, String> {
