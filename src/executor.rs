@@ -8,6 +8,7 @@ use crate::ast::*;
 use num_bigint::{BigInt, Sign};
 use num_traits::cast::{FromPrimitive, ToPrimitive};
 use num_traits::identities::{One, Zero};
+use num_traits::pow::Pow;
 use num_traits::sign::Signed;
 
 fn to_f64(val: &Ratio) -> f64 {
@@ -17,7 +18,20 @@ fn to_f64(val: &Ratio) -> f64 {
     fnum / fden
 }
 fn pow(a: &Ratio, b: &Ratio) -> Ratio {
-    // TODO: optimize this when using an integer for the exponent.
+    if a.is_integer() && b.is_integer() {
+        let a = a.to_integer();
+        let b = b.to_integer();
+
+        let (b, is_neg) = match b.to_biguint() {
+            Some(b) => (Some(b), false),
+            None => (b.neg().to_biguint(), true),
+        };
+
+        if let Some(b) = b {
+            let res = if is_neg { 1 / a.pow(b) } else { a.pow(b) };
+            return Ratio::from(res);
+        }
+    }
 
     let a = to_f64(a);
     let b = to_f64(b);
