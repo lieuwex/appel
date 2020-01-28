@@ -248,7 +248,13 @@ fn p_expr_1<'a>() -> Parser<'a, Expr> {
 /// Vector of atom-like things
 fn p_expr_2<'a>() -> Parser<'a, Expr> {
     list(call(p_expr_1), whitespace(1))
-        .map(|v| Expr::Vector(v.to_vec()))
+        .convert(|v| {
+            if v.len() == 0 {
+                Err(String::from("expected non-empty vector"))
+            } else {
+                Ok(Expr::Vector(v.to_vec()))
+            }
+        })
         .name("vector")
 }
 
