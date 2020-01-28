@@ -147,7 +147,7 @@ impl Matrix {
 
         let mut i = 0;
         let mut mult = 1;
-        for (dim, index) in indices.iter().enumerate() {
+        for (dim, index) in indices.iter().rev().enumerate() {
             i += index * mult;
             mult *= self.shape[dim];
         }
