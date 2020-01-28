@@ -80,7 +80,7 @@ fn whitespace<'a>(min: usize) -> Parser<'a, ()> {
 }
 
 fn symbol<'a, T: 'a>(p: Parser<'a, T>) -> Parser<'a, T> {
-    (whitespace(0) * p - whitespace(0)).name("symbol")
+    (whitespace(0) * p).name("symbol")
 }
 
 fn operator<'a>(text: &'static str) -> Parser<'a, ()> {
@@ -225,10 +225,16 @@ fn p_atom<'a>() -> Parser<'a, Atom> {
     p_float() | p_int() | p_var().name("atom")
 }
 
-/// Parenthesised expression or plain atom
+/// Parenthesised expression, atom with index, or plain atom
 fn p_expr_0<'a>() -> Parser<'a, Expr> {
-    (symbol(operator("(")) * call(p_expr) - symbol(operator(")"))).name("paren")
-        | call(p_atom).map(Expr::Atom)
+    let atom = || call(p_atom).map(Expr::Atom);
+    let index = || symbol(operator("[")) * call(p_expr) - symbol(operator("]"));
+
+    (operator("(") * call(p_expr) - operator(")")).name("paren")
+        | (atom() + index())
+            .name("index")
+            .map(|(a, b)| Expr::Index(Box::new(a), Box::new(b)))
+        | atom()
 }
 
 fn p_expr_1<'a>() -> Parser<'a, Expr> {
@@ -333,17 +339,8 @@ fn p_expr_9<'a>() -> Parser<'a, Expr> {
     (fold).name("fold") | p_expr_8()
 }
 
-/// Matrix index
-fn p_expr_10<'a>() -> Parser<'a, Expr> {
-    let op_p = call(p_expr_9) - symbol(operator("[")) + call(p_expr) - symbol(operator("]"));
-
-    op_p.map(|(a, b)| Expr::Index(Box::new(a), Box::new(b)))
-        .name("index")
-        | p_expr_9()
-}
-
 fn p_expr<'a>() -> Parser<'a, Expr> {
-    p_expr_10()
+    p_expr_9()
 }
 
 /// Function declare
