@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::fmt;
+use std::io::Write;
 use std::ops::Neg;
 
 use crate::ast::*;
@@ -10,6 +11,8 @@ use num_traits::cast::{FromPrimitive, ToPrimitive};
 use num_traits::identities::{One, Zero};
 use num_traits::pow::Pow;
 use num_traits::sign::Signed;
+
+use tabwriter::{Alignment, TabWriter};
 
 fn to_f64(val: &Ratio) -> f64 {
     let (num, den) = val.clone().into();
@@ -108,17 +111,22 @@ impl fmt::Display for Matrix {
         let n_dimensions = self.shape.len();
         match n_dimensions {
             2 => {
+                let mut writer = TabWriter::new(vec![])
+                    .padding(1)
+                    .minwidth(0)
+                    .alignment(Alignment::Right);
+
                 for i in 0..self.shape[0] {
                     for j in 0..self.shape[1] {
                         let val = self.get_at(vec![i, j]).unwrap();
-                        if j > 0 {
-                            write!(f, " ")?;
-                        }
-
-                        write!(f, "{}", val)?;
+                        write!(&mut writer, "{}\t", val).or(Err(fmt::Error {}))?;
                     }
-                    write!(f, "\n")?;
+                    write!(writer, "\n").or(Err(fmt::Error {}))?;
                 }
+
+                writer.flush().or(Err(fmt::Error {}))?;
+                let s = String::from_utf8(writer.into_inner().unwrap()).unwrap();
+                write!(f, "{}", s)?;
             }
 
             _ => {
