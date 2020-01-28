@@ -72,15 +72,15 @@ fn one_whitespace<'a>() -> Parser<'a, ()> {
         .discard()
         .name("whitespace")
 }
-fn whitespace<'a>() -> Parser<'a, ()> {
+fn whitespace<'a>(min: usize) -> Parser<'a, ()> {
     one_whitespace()
-        .repeat(0..)
+        .repeat(min..)
         .discard()
         .name("optional whitespace")
 }
 
 fn symbol<'a, T: 'a>(p: Parser<'a, T>) -> Parser<'a, T> {
-    (whitespace() * p - whitespace()).name("symbol")
+    (whitespace(0) * p - whitespace(0)).name("symbol")
 }
 
 fn operator<'a>(text: &'static str) -> Parser<'a, ()> {
@@ -247,7 +247,7 @@ fn p_expr_1<'a>() -> Parser<'a, Expr> {
 
 /// Vector of atom-like things
 fn p_expr_2<'a>() -> Parser<'a, Expr> {
-    list(call(p_expr_1), whitespace())
+    list(call(p_expr_1), whitespace(1))
         .map(|v| Expr::Vector(v.to_vec()))
         .name("vector")
 }
@@ -284,7 +284,7 @@ fn p_expr_5<'a>() -> Parser<'a, Expr> {
 fn p_expr_6<'a>() -> Parser<'a, Expr> {
     let op_no_spaces = || sym('+').map(|_| BinOp::Add) | sym('-').map(|_| BinOp::Sub);
     let op_p = (one_whitespace().repeat(1..) * op_no_spaces() - one_whitespace().repeat(1..))
-        | (op_no_spaces() - whitespace());
+        | (op_no_spaces() - whitespace(0));
 
     left_recurse(p_expr_5, op_p, "sum", |e1, op, e2| {
         Expr::Binary(Box::new(e1), op, Box::new(e2))
@@ -363,7 +363,7 @@ fn p_command<'a>() -> Parser<'a, Statement> {
             .map(|x| x.iter().collect::<String>())
     };
 
-    (symbol(operator(")")) * not_whitespace_word() - whitespace() + call(p_expr))
+    (symbol(operator(")")) * not_whitespace_word() - whitespace(0) + call(p_expr))
         .map(|(name, expr)| Statement::InternalCommand(name, expr))
         .name("assign")
 }
@@ -374,6 +374,6 @@ fn p_statement<'a>() -> Parser<'a, Statement> {
 
 pub fn parse(source: &str) -> Result<Option<Statement>, pom::Error> {
     let chars = source.chars().collect::<Vec<_>>();
-    let res = (whitespace() * p_statement().opt() - whitespace() - end()).parse(&chars);
+    let res = (whitespace(0) * p_statement().opt() - whitespace(0) - end()).parse(&chars);
     res
 }
