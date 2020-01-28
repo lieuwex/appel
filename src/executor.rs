@@ -48,12 +48,12 @@ impl fmt::Display for Value {
         match self {
             Value::Matrix(m) => write!(f, "{}", m),
             Value::Function(fun) => {
-                write!(f, "fun")?;
+                write!(f, "fn")?;
                 for param in &fun.params {
                     write!(f, " {}", param)?;
                 }
 
-                write!(f, "{}", fun.expr)
+                write!(f, " = {}", fun.expr)
             }
         }
     }

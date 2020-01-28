@@ -61,7 +61,7 @@ fn check_reserved(s: String) -> Result<String, String> {
     let reserved = vec!["skip", "rho", "unpack", "pack", "log", "iota", "abs", "rev"];
 
     if reserved.iter().any(|x| *x == s) {
-        Err(String::from("keyword is reserved"))
+        Err(format!("{} is a reserved keyword", s))
     } else {
         Ok(s)
     }

@@ -13,16 +13,18 @@ pub enum UnOp {
     Rev,
 }
 
+// TODO: precendence for operators.
+
 impl fmt::Display for UnOp {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             UnOp::Id => write!(f, "+"),
             UnOp::Neg => write!(f, "-"),
             UnOp::Not => write!(f, "!"),
-            UnOp::Iota => write!(f, "iota"),
-            UnOp::Abs => write!(f, "abs"),
-            UnOp::Rho => write!(f, "rho"),
-            UnOp::Rev => write!(f, "rev"),
+            UnOp::Iota => write!(f, "iota "),
+            UnOp::Abs => write!(f, "abs "),
+            UnOp::Rho => write!(f, "rho "),
+            UnOp::Rev => write!(f, "rev "),
         }
     }
 }
