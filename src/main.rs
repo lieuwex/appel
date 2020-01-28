@@ -17,7 +17,8 @@ fn exec_line(exec: &mut Executor, line: std::io::Result<String>) -> Result<Strin
 
     let parsed = match parser::parse(&line) {
         Err(e) => return Err(format!("error while parsing: {}", e)),
-        Ok(s) => s,
+        Ok(None) => return Ok(String::new()),
+        Ok(Some(s)) => s,
     };
 
     println!("parsed as: {:?}", parsed);
@@ -36,7 +37,13 @@ fn main() {
     for line in std::io::stdin().lock().lines() {
         match exec_line(&mut exec, line) {
             Err(e) => eprintln!("{}\n", e),
-            Ok(r) => println!("{}\n", r),
+            Ok(r) => {
+                if r.is_empty() {
+                    println!("")
+                } else {
+                    println!("{}\n", r)
+                }
+            }
         }
     }
 }

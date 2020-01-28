@@ -372,8 +372,8 @@ fn p_statement<'a>() -> Parser<'a, Statement> {
     p_fun() | p_assign() | p_command() | p_expr().map(Statement::Expr)
 }
 
-pub fn parse(source: &str) -> Result<Statement, pom::Error> {
+pub fn parse(source: &str) -> Result<Option<Statement>, pom::Error> {
     let chars = source.chars().collect::<Vec<_>>();
-    let res = (whitespace() * p_statement() - whitespace() - end()).parse(&chars);
+    let res = (whitespace() * p_statement().opt() - whitespace() - end()).parse(&chars);
     res
 }
