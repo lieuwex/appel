@@ -79,8 +79,14 @@ fn whitespace<'a>(min: usize) -> Parser<'a, ()> {
         .name("optional whitespace")
 }
 
-fn symbol<'a, T: 'a>(p: Parser<'a, T>) -> Parser<'a, T> {
-    (whitespace(0) * p - whitespace(0)).name("symbol")
+fn symbol_left<'a, T: 'a>(p: Parser<'a, T>) -> Parser<'a, T> {
+    (whitespace(0) * p).name("symbol (whitespace left)")
+}
+fn symbol_right<'a, T: 'a>(p: Parser<'a, T>) -> Parser<'a, T> {
+    (p - whitespace(0)).name("symbol (whitespace right)")
+}
+fn symbol_both<'a, T: 'a>(p: Parser<'a, T>) -> Parser<'a, T> {
+    (whitespace(0) * p - whitespace(0)).name("symbol (whitespace both)")
 }
 
 fn operator<'a>(text: &'static str) -> Parser<'a, ()> {
@@ -229,12 +235,14 @@ fn p_atom<'a>() -> Parser<'a, Atom> {
 fn p_expr_0<'a>() -> Parser<'a, Expr> {
     let atom = call(p_atom).map(Expr::Atom);
 
-    (symbol(operator("(")) * call(p_expr) - symbol(operator(")"))).name("paren") | atom
+    (symbol_right(operator("(")) * call(p_expr) - symbol_left(operator(")"))).name("paren") | atom
 }
 
 /// Indexing
 fn p_expr_1<'a>() -> Parser<'a, Expr> {
-    let index = sym('[') * whitespace(0) * call(p_expr) - whitespace(0) - sym(']');
+    let index = symbol_right(sym('[')) * whitespace(0) * call(p_expr)
+        - whitespace(0)
+        - symbol_left(sym(']'));
 
     (call(p_expr_0) + index)
         .name("index")
@@ -273,7 +281,7 @@ fn p_expr_3<'a>() -> Parser<'a, Expr> {
 fn p_expr_4<'a>() -> Parser<'a, Expr> {
     left_recurse(
         p_expr_3,
-        symbol(comp_op()),
+        symbol_both(comp_op()),
         "binary comparison",
         |e1, op, e2| Expr::Binary(Box::new(e1), BinOp::CompOp(op), Box::new(e2)),
     )
@@ -281,7 +289,7 @@ fn p_expr_4<'a>() -> Parser<'a, Expr> {
 
 /// Power (**) of unary'd vector
 fn p_expr_5<'a>() -> Parser<'a, Expr> {
-    let op_p = symbol(operator("**")).map(|_| BinOp::Pow);
+    let op_p = symbol_both(operator("**")).map(|_| BinOp::Pow);
     left_recurse(p_expr_4, op_p, "power", |e1, op, e2| {
         Expr::Binary(Box::new(e1), op, Box::new(e2))
     })
@@ -289,9 +297,9 @@ fn p_expr_5<'a>() -> Parser<'a, Expr> {
 
 /// Product (*, /, %) of powers
 fn p_expr_6<'a>() -> Parser<'a, Expr> {
-    let op_p = symbol(operator("*")).map(|_| BinOp::Mul)
-        | symbol(operator("/")).map(|_| BinOp::Div)
-        | symbol(operator("%")).map(|_| BinOp::Mod);
+    let op_p = symbol_both(operator("*")).map(|_| BinOp::Mul)
+        | symbol_both(operator("/")).map(|_| BinOp::Div)
+        | symbol_both(operator("%")).map(|_| BinOp::Mod);
     left_recurse(p_expr_5, op_p, "product", |e1, op, e2| {
         Expr::Binary(Box::new(e1), op, Box::new(e2))
     })
@@ -299,7 +307,8 @@ fn p_expr_6<'a>() -> Parser<'a, Expr> {
 
 /// Sum (+, -) of products
 fn p_expr_7<'a>() -> Parser<'a, Expr> {
-    let op_p = symbol(sym('+')).map(|_| BinOp::Add) | symbol(sym('-')).map(|_| BinOp::Sub);
+    let op_p =
+        symbol_both(sym('+')).map(|_| BinOp::Add) | symbol_both(sym('-')).map(|_| BinOp::Sub);
 
     left_recurse(p_expr_6, op_p, "sum", |e1, op, e2| {
         Expr::Binary(Box::new(e1), op, Box::new(e2))
@@ -307,10 +316,10 @@ fn p_expr_7<'a>() -> Parser<'a, Expr> {
 }
 
 fn p_expr_8<'a>() -> Parser<'a, Expr> {
-    let op_un = symbol(operator("iota")).map(|_| UnOp::Iota)
-        | symbol(operator("abs")).map(|_| UnOp::Abs)
-        | symbol(operator("rho")).map(|_| UnOp::Rho)
-        | symbol(operator("rev")).map(|_| UnOp::Rev);
+    let op_un = symbol_both(operator("iota")).map(|_| UnOp::Iota)
+        | symbol_both(operator("abs")).map(|_| UnOp::Abs)
+        | symbol_both(operator("rho")).map(|_| UnOp::Rho)
+        | symbol_both(operator("rev")).map(|_| UnOp::Rev);
 
     (op_un.repeat(0..) + call(p_expr_7))
         .map(|(ops, ex)| {
@@ -322,11 +331,11 @@ fn p_expr_8<'a>() -> Parser<'a, Expr> {
 }
 
 fn p_expr_9<'a>() -> Parser<'a, Expr> {
-    let op_bin = symbol(operator("skip")).map(|_| BinOp::Skip)
-        | symbol(operator("rho")).map(|_| BinOp::Rho)
-        | symbol(operator("unpack")).map(|_| BinOp::Unpack)
-        | symbol(operator("pack")).map(|_| BinOp::Pack)
-        | symbol(operator("log")).map(|_| BinOp::Log);
+    let op_bin = symbol_both(operator("skip")).map(|_| BinOp::Skip)
+        | symbol_both(operator("rho")).map(|_| BinOp::Rho)
+        | symbol_both(operator("unpack")).map(|_| BinOp::Unpack)
+        | symbol_both(operator("pack")).map(|_| BinOp::Pack)
+        | symbol_both(operator("log")).map(|_| BinOp::Log);
 
     right_recurse(p_expr_8, op_bin, "special binary", |e1, op, e2| {
         Expr::Binary(Box::new(e1), op, Box::new(e2))
@@ -336,7 +345,7 @@ fn p_expr_9<'a>() -> Parser<'a, Expr> {
 /// Fold
 fn p_expr_10<'a>() -> Parser<'a, Expr> {
     let op_p = binary_op().map(FoldOp::BinOp) | p_varname().map(FoldOp::FunctionRef);
-    let fold = (op_p - symbol(operator("//")) + call(p_expr))
+    let fold = (op_p - symbol_both(operator("//")) + call(p_expr))
         .map(|(op, expr)| Expr::Fold(op, Box::new(expr)));
 
     (fold).name("fold") | p_expr_9()
@@ -348,9 +357,9 @@ fn p_expr<'a>() -> Parser<'a, Expr> {
 
 /// Function declare
 fn p_fun<'a>() -> Parser<'a, Statement> {
-    (symbol(operator("fn")) * p_varname()
+    (symbol_right(operator("fn")) * p_varname()
         + (one_whitespace().repeat(1..) * p_varname()).repeat(1..)
-        - symbol(operator("="))
+        - symbol_both(operator("="))
         + call(p_expr))
     .map(|((fnname, args), body)| Statement::FunDeclare(fnname, args, body))
     .name("function")
@@ -358,7 +367,7 @@ fn p_fun<'a>() -> Parser<'a, Statement> {
 
 /// Variable assignment
 fn p_assign<'a>() -> Parser<'a, Statement> {
-    (symbol(p_varname()) - symbol(operator("=")) + call(p_expr))
+    (p_varname() - symbol_both(operator("=")) + call(p_expr))
         .map(|(name, body)| Statement::Assign(name, body))
         .name("assign")
 }
@@ -371,7 +380,7 @@ fn p_command<'a>() -> Parser<'a, Statement> {
             .map(|x| x.iter().collect::<String>())
     };
 
-    (symbol(operator(")")) * not_whitespace_word() - whitespace(0) + call(p_expr))
+    (symbol_right(operator(")")) * not_whitespace_word() - whitespace(0) + call(p_expr))
         .map(|(name, expr)| Statement::InternalCommand(name, expr))
         .name("assign")
 }
@@ -384,4 +393,74 @@ pub fn parse(source: &str) -> Result<Option<Statement>, pom::Error> {
     let chars = source.chars().collect::<Vec<_>>();
     let parser = whitespace(0) * p_statement().opt() - whitespace(0) - end();
     parser.parse(&chars)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    macro_rules! is_ok_some {
+        ($v:expr) => {
+            match $v {
+                Err(_) => false,
+                Ok(None) => false,
+                Ok(Some(_)) => true,
+            }
+        };
+    }
+
+    #[test]
+    fn test_num() {
+        assert!(is_ok_some!(parse("1")));
+        assert!(is_ok_some!(parse("1.5")));
+        assert!(is_ok_some!(parse(".5")));
+        assert!(is_ok_some!(parse("1.")));
+        assert!(is_ok_some!(parse("1.5e1")));
+        assert!(is_ok_some!(parse("1.5e-1")));
+        assert!(is_ok_some!(parse(".5e9")));
+        assert!(is_ok_some!(parse("-.5e9")));
+    }
+
+    #[test]
+    fn test_var() {
+        assert!(!is_ok_some!(parse("1kaas")));
+        assert!(is_ok_some!(parse("kaas1")));
+
+        assert!(is_ok_some!(parse("kaas1 = a")));
+    }
+
+    #[test]
+    fn test_vec() {
+        assert!(is_ok_some!(parse("1 2 3")));
+        assert!(is_ok_some!(parse("a b c")));
+        assert!(is_ok_some!(parse("a 2 c")));
+        assert!(is_ok_some!(parse("a (a b) c")));
+    }
+
+    #[test]
+    fn test_fn() {
+        assert!(is_ok_some!(parse("fn test a = a")));
+        assert!(is_ok_some!(parse("fn test a = a + a")));
+        assert!(is_ok_some!(parse("fn test a = +//a")));
+        assert!(is_ok_some!(parse("fn test a = +//a")));
+        assert!(!is_ok_some!(parse("fn a = +//a")));
+    }
+
+    #[test]
+    fn test_binop() {
+        assert!(is_ok_some!(parse("a+ b")));
+        assert!(is_ok_some!(parse("a+b")));
+        assert!(is_ok_some!(parse("a + b")));
+        assert!(is_ok_some!(parse("a ** b + c")));
+    }
+
+    #[test]
+    fn test_paren() {
+        assert!(is_ok_some!(parse("( a + b )")));
+        assert!(is_ok_some!(parse("( a + (b) )")));
+        assert!(is_ok_some!(parse("( a + (b * c) )")));
+        assert!(is_ok_some!(parse("1 2 (3 4)")));
+        assert!(is_ok_some!(parse("(3 4) 2 (3 4)")));
+        assert!(is_ok_some!(parse("(1+ 2 )*3")));
+    }
 }
