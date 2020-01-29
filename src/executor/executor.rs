@@ -479,64 +479,37 @@ impl Executor {
                 Ok(f.into())
             }
 
-            Statement::InternalCommand(command, body) => {
-                /*
-                macro_rules! expect_nargs {
-                    (== $count:expr) => {
-                        if args.len() != $count {
-                            return Err(format!("expected {} arguments", $count));
-                        }
-                    };
-                    (< $count:expr) => {
-                        if args.len() >= $count {
-                            return Err(format!("expected less than {} arguments", $count));
-                        }
-                    };
-                    (> $count:expr) => {
-                        if args.len() <= $count {
-                            return Err(format!("expected more than {} arguments", $count));
-                        }
-                    };
-                }
-                */
-
-                match command.as_str() {
-                    "n" | "number" => {
-                        //expect_nargs!(== 1);
-                        match self.execute_expr(body)? {
-                            ExecutorResult::None => {
-                                Err(String::from("can't format nothing to number"))
-                            }
-                            ExecutorResult::Info(_) => {
-                                Err(String::from("can't format info string to number"))
-                            }
-                            ExecutorResult::Value(Value::Function(_)) => {
-                                Err(String::from("can't format function to number"))
-                            }
-                            ExecutorResult::Value(Value::Matrix(m)) => {
-                                let s = m
-                                    .values
-                                    .iter()
-                                    .map(to_f64)
-                                    .enumerate()
-                                    .map(|(i, val)| {
-                                        if i == 0 {
-                                            format!("{}", val)
-                                        } else {
-                                            format!(" {}", val)
-                                        }
-                                    })
-                                    .collect::<Vec<String>>()
-                                    .concat();
-
-                                Ok(ExecutorResult::Info(s))
-                            }
-                        }
+            Statement::InternalCommand(command, body) => match command.as_str() {
+                "n" | "number" => match self.execute_expr(body)? {
+                    ExecutorResult::None => Err(String::from("can't format nothing to number")),
+                    ExecutorResult::Info(_) => {
+                        Err(String::from("can't format info string to number"))
                     }
+                    ExecutorResult::Value(Value::Function(_)) => {
+                        Err(String::from("can't format function to number"))
+                    }
+                    ExecutorResult::Value(Value::Matrix(m)) => {
+                        let s = m
+                            .values
+                            .iter()
+                            .map(to_f64)
+                            .enumerate()
+                            .map(|(i, val)| {
+                                if i == 0 {
+                                    format!("{}", val)
+                                } else {
+                                    format!(" {}", val)
+                                }
+                            })
+                            .collect::<Vec<String>>()
+                            .concat();
 
-                    cmd => Err(format!("unknown command {}", cmd)),
-                }
-            }
+                        Ok(ExecutorResult::Info(s))
+                    }
+                },
+
+                cmd => Err(format!("unknown command {}", cmd)),
+            },
         };
 
         if let Ok(ExecutorResult::Value(Value::Matrix(m))) = &res {
