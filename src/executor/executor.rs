@@ -1,7 +1,5 @@
 use std::collections::HashMap;
 use std::convert::TryFrom;
-use std::fmt;
-use std::io::Write;
 use std::ops::Neg;
 
 use crate::ast::*;
@@ -12,7 +10,10 @@ use num_traits::identities::{One, Zero};
 use num_traits::pow::Pow;
 use num_traits::sign::Signed;
 
-use tabwriter::{Alignment, TabWriter};
+use super::function::Function;
+use super::matrix::Matrix;
+use super::result::ExecutorResult;
+use super::value::Value;
 
 fn to_f64(val: &Ratio) -> f64 {
     let (num, den) = val.clone().into();
@@ -48,165 +49,9 @@ fn log(base: &Ratio, n: &Ratio) -> Ratio {
     Ratio::from_f64(res).unwrap()
 }
 
-#[derive(Clone, Debug)]
-pub struct Function {
-    params: Vec<String>,
-    expr: Expr,
-}
-
-#[derive(Clone, Debug)]
-pub enum Value {
-    Matrix(Matrix),
-    Function(Function),
-}
-
-impl fmt::Display for Value {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Value::Matrix(m) => write!(f, "{}", m),
-            Value::Function(fun) => {
-                write!(f, "fn")?;
-                for param in &fun.params {
-                    write!(f, " {}", param)?;
-                }
-
-                write!(f, " = {}", fun.expr)
-            }
-        }
-    }
-}
-
 #[derive(Clone)]
 pub struct Executor {
     variables: HashMap<String, Value>,
-}
-
-#[derive(Clone, Debug)]
-pub enum ExecutorResult {
-    None,
-    Value(Value),
-    Info(String),
-}
-
-impl ExecutorResult {
-    /// Unwrap into Value
-    fn unwrap(self) -> Value {
-        match self {
-            ExecutorResult::Value(v) => v,
-            _ => panic!(),
-        }
-    }
-}
-
-#[derive(Clone, Debug)]
-pub struct Matrix {
-    values: Vec<Ratio>,
-    shape: Vec<usize>,
-}
-
-impl fmt::Display for Matrix {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        // TODO: actually format
-
-        let n_dimensions = self.shape.len();
-        match n_dimensions {
-            2 => {
-                let mut writer = TabWriter::new(vec![])
-                    .padding(1)
-                    .minwidth(0)
-                    .alignment(Alignment::Right);
-
-                for i in 0..self.shape[0] {
-                    for j in 0..self.shape[1] {
-                        let val = self.get_at(vec![i, j]).unwrap();
-                        write!(&mut writer, "{}\t", val).or(Err(fmt::Error {}))?;
-                    }
-                    writeln!(writer).or(Err(fmt::Error {}))?;
-                }
-
-                writer.flush().or(Err(fmt::Error {}))?;
-                let s = String::from_utf8(writer.into_inner().unwrap()).unwrap();
-                write!(f, "{}", s)?;
-            }
-
-            _ => {
-                for (i, val) in self.values.iter().enumerate() {
-                    if i > 0 {
-                        write!(f, " ")?;
-                    }
-
-                    write!(f, "{}", val)?;
-                }
-            }
-        }
-
-        Ok(())
-    }
-}
-
-impl Matrix {
-    pub fn make_vector(values: Vec<Ratio>) -> Self {
-        let shape = vec![values.len()];
-        Self { values, shape }
-    }
-
-    pub fn is_scalar(&self) -> bool {
-        self.values.len() == 1
-    }
-
-    pub fn scalar(&self) -> Option<&Ratio> {
-        if self.is_scalar() {
-            Some(&self.values[0])
-        } else {
-            None
-        }
-    }
-
-    pub fn get_at(&self, indices: Vec<usize>) -> Option<&Ratio> {
-        if indices.len() != self.shape.len() {
-            return None;
-        }
-
-        let mut i = 0;
-        let mut mult = 1;
-        for (dim, index) in indices.iter().rev().enumerate() {
-            i += index * mult;
-            mult *= self.shape[dim];
-        }
-
-        self.values.get(i)
-    }
-}
-
-impl From<Ratio> for Matrix {
-    fn from(rat: Ratio) -> Self {
-        Self {
-            values: vec![rat],
-            shape: vec![],
-        }
-    }
-}
-
-impl TryFrom<Value> for Matrix {
-    type Error = String;
-
-    fn try_from(res: Value) -> Result<Self, Self::Error> {
-        match res {
-            Value::Function(_) => Err(String::from("expected matrix, got a function")),
-            Value::Matrix(m) => Ok(m),
-        }
-    }
-}
-impl TryFrom<ExecutorResult> for Matrix {
-    type Error = String;
-
-    fn try_from(res: ExecutorResult) -> Result<Self, Self::Error> {
-        match res {
-            ExecutorResult::None => Err(String::from("expected value")),
-            ExecutorResult::Info(_) => Err(String::from("expected value, got an info string")),
-            ExecutorResult::Value(val) => Matrix::try_from(val),
-        }
-    }
 }
 
 fn expect_vector(v: ExecutorResult) -> Result<Vec<Ratio>, String> {
