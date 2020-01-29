@@ -16,3 +16,12 @@ impl ExecutorResult {
         }
     }
 }
+
+impl<T> From<T> for ExecutorResult
+where
+    T: Into<Value>,
+{
+    fn from(v: T) -> Self {
+        ExecutorResult::Value(v.into())
+    }
+}

@@ -24,3 +24,15 @@ impl fmt::Display for Value {
         }
     }
 }
+
+impl From<Matrix> for Value {
+    fn from(m: Matrix) -> Self {
+        Value::Matrix(m)
+    }
+}
+
+impl From<Function> for Value {
+    fn from(f: Function) -> Self {
+        Value::Function(f)
+    }
+}

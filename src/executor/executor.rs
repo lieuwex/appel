@@ -67,11 +67,6 @@ fn expect_scalar(v: ExecutorResult) -> Result<Ratio, String> {
         Some(s) => Ok(s.clone()),
     }
 }
-macro_rules! ok_matrix {
-    ($var:expr) => {
-        Ok(ExecutorResult::Value(Value::Matrix(Matrix::from($var))))
-    };
-}
 
 fn get_comp_op_fn(op: CompOp) -> impl Fn(&Ratio, &Ratio) -> Ratio {
     let fun: &dyn Fn(&Ratio, &Ratio) -> bool = match op {
@@ -112,7 +107,7 @@ fn call_binary(op: BinOp, a: Matrix, b: Matrix) -> Result<ExecutorResult, String
                     values,
                     shape: a.shape,
                 };
-                return ok_matrix!(matrix);
+                return Ok(matrix.into());
             }
 
             if !a.is_scalar() && !b.is_scalar() {
@@ -144,7 +139,7 @@ fn call_binary(op: BinOp, a: Matrix, b: Matrix) -> Result<ExecutorResult, String
                 shape: non_scalar.shape,
             };
 
-            ok_matrix!(matrix)
+            Ok(matrix.into())
         }};
     }
 
@@ -162,10 +157,11 @@ fn call_binary(op: BinOp, a: Matrix, b: Matrix) -> Result<ExecutorResult, String
             let scalar = expect_scalar(ExecutorResult::Value(Value::Matrix(a)))?;
             let n = scalar.to_integer().to_usize().unwrap_or(std::usize::MAX);
 
-            ok_matrix!(Matrix {
+            Ok(Matrix {
                 values: b.values.into_iter().skip(n).collect(),
                 shape: b.shape,
-            })
+            }
+            .into())
         }
 
         BinOp::Rho => {
@@ -180,7 +176,7 @@ fn call_binary(op: BinOp, a: Matrix, b: Matrix) -> Result<ExecutorResult, String
                 .take(shape.iter().product())
                 .collect();
 
-            ok_matrix!(Matrix { values, shape })
+            Ok(Matrix { values, shape }.into())
         }
 
         BinOp::Unpack => {
@@ -206,7 +202,7 @@ fn call_binary(op: BinOp, a: Matrix, b: Matrix) -> Result<ExecutorResult, String
                 })
                 .collect();
 
-            ok_matrix!(Matrix::make_vector(values))
+            Ok(Matrix::make_vector(values).into())
         }
         BinOp::Pack => {
             let a = get_int(a)?;
@@ -225,7 +221,7 @@ fn call_binary(op: BinOp, a: Matrix, b: Matrix) -> Result<ExecutorResult, String
                 None => return Err(String::from("couldn't convert bits to int")),
                 Some(i) => i,
             };
-            ok_matrix!(Matrix::from(Ratio::from_integer(int)))
+            Ok(Matrix::from(Ratio::from_integer(int)).into())
         }
     }
 }
@@ -262,7 +258,7 @@ impl Executor {
                     values: values,
                     shape: val.shape,
                 };
-                ok_matrix!(new)
+                Ok(new.into())
             }};
         }
 
@@ -282,7 +278,7 @@ impl Executor {
                 let s = expect_scalar(res)?;
                 let upper = s.to_integer().to_usize().unwrap_or(std::usize::MAX);
                 let values: Vec<_> = (0..upper).filter_map(Ratio::from_usize).collect();
-                ok_matrix!(Matrix::make_vector(values))
+                Ok(Matrix::make_vector(values).into())
             }
 
             UnOp::Rho => {
@@ -292,16 +288,17 @@ impl Executor {
                     .iter()
                     .map(|s| Ratio::from_usize(*s).unwrap())
                     .collect();
-                ok_matrix!(Matrix::make_vector(values))
+                Ok(Matrix::make_vector(values).into())
             }
 
             UnOp::Rev => {
                 let m = Matrix::try_from(res)?;
                 let values: Vec<Ratio> = m.values.into_iter().rev().collect();
-                ok_matrix!(Matrix {
+                Ok(Matrix {
                     values,
                     shape: m.shape,
-                })
+                }
+                .into())
             }
         }
     }
@@ -358,7 +355,7 @@ impl Executor {
 
     fn execute_expr(&mut self, node: Expr) -> Result<ExecutorResult, String> {
         match node {
-            Expr::Atom(Atom::Rat(v)) => ok_matrix!(v),
+            Expr::Atom(Atom::Rat(v)) => Ok(Matrix::from(v).into()),
             Expr::Atom(Atom::Ref(s)) => {
                 let var = match self.variables.get(&s) {
                     None => return Err(format!("variable {} not found", s)),
@@ -366,7 +363,7 @@ impl Executor {
                 };
 
                 match var {
-                    Value::Matrix(m) => ok_matrix!(m),
+                    Value::Matrix(m) => Ok(m.into()),
                     Value::Function(f) => Ok(ExecutorResult::Value(Value::Function(f))),
                 }
             }
@@ -389,7 +386,7 @@ impl Executor {
 
                     Value::Matrix(first) => {
                         if expressions.len() == 1 {
-                            return ok_matrix!(first);
+                            return Ok(first.into());
                         }
 
                         let mut values = Vec::with_capacity(expressions.len());
@@ -401,7 +398,7 @@ impl Executor {
                             values.push(scalar);
                         }
 
-                        ok_matrix!(Matrix::make_vector(values))
+                        Ok(Matrix::make_vector(values).into())
                     }
                 }
             }
@@ -432,7 +429,7 @@ impl Executor {
 
                 match item {
                     None => Err(String::from("out of bounds")),
-                    Some(i) => ok_matrix!(Matrix::from(i.clone())),
+                    Some(i) => Ok(Matrix::from(i.clone()).into()),
                 }
             }
         }
