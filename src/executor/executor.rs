@@ -470,9 +470,13 @@ impl Executor {
 
             Statement::FunDeclare(name, params, expr) => {
                 err_var_exists!(name, true);
-                let f = Function { params, expr };
-                self.variables.insert(name, Value::Function(f));
-                Ok(ExecutorResult::None)
+                let f = Function {
+                    name: name.clone(),
+                    params,
+                    expr,
+                };
+                self.variables.insert(name, Value::Function(f.clone()));
+                Ok(f.into())
             }
 
             Statement::InternalCommand(command, body) => {
