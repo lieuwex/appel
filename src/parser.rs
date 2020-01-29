@@ -290,7 +290,7 @@ fn p_expr_4<'a>() -> Parser<'a, Expr> {
 /// Power (**) of unary'd vector
 fn p_expr_5<'a>() -> Parser<'a, Expr> {
     let op_p = symbol_both(operator("**")).map(|_| BinOp::Pow);
-    left_recurse(p_expr_4, op_p, "power", |e1, op, e2| {
+    right_recurse(p_expr_4, op_p, "power", |e1, op, e2| {
         Expr::Binary(Box::new(e1), op, Box::new(e2))
     })
 }
