@@ -80,7 +80,7 @@ fn whitespace<'a>(min: usize) -> Parser<'a, ()> {
 }
 
 fn symbol<'a, T: 'a>(p: Parser<'a, T>) -> Parser<'a, T> {
-    (whitespace(0) * p).name("symbol")
+    (whitespace(0) * p - whitespace(0)).name("symbol")
 }
 
 fn operator<'a>(text: &'static str) -> Parser<'a, ()> {
@@ -222,27 +222,32 @@ fn p_var<'a>() -> Parser<'a, Atom> {
 }
 
 fn p_atom<'a>() -> Parser<'a, Atom> {
-    p_float() | p_int() | p_var().name("atom")
+    (p_float() | p_int() | p_var()).name("atom")
 }
 
-/// Parenthesised expression, atom with index, or plain atom
+/// Parenthesised expression, or plain atom
 fn p_expr_0<'a>() -> Parser<'a, Expr> {
-    let atom = || call(p_atom).map(Expr::Atom);
-    let index = || symbol(operator("[")) * call(p_expr) - symbol(operator("]"));
+    let atom = call(p_atom).map(Expr::Atom);
 
-    (operator("(") * call(p_expr) - operator(")")).name("paren")
-        | (atom() + index())
-            .name("index")
-            .map(|(a, b)| Expr::Index(Box::new(a), Box::new(b)))
-        | atom()
+    (symbol(operator("(")) * call(p_expr) - symbol(operator(")"))).name("paren") | atom
 }
 
+/// Indexing
 fn p_expr_1<'a>() -> Parser<'a, Expr> {
+    let index = sym('[') * whitespace(0) * call(p_expr) - whitespace(0) - sym(']');
+
+    (call(p_expr_0) + index)
+        .name("index")
+        .map(|(a, b)| Expr::Index(Box::new(a), Box::new(b)))
+        | call(p_expr_0)
+}
+
+fn p_expr_2<'a>() -> Parser<'a, Expr> {
     let unary = operator("+").map(|_| UnOp::Id)
         | operator("-").map(|_| UnOp::Neg)
         | operator("!").map(|_| UnOp::Not);
 
-    (unary.repeat(0..) + call(p_expr_0))
+    (unary.repeat(0..) + call(p_expr_1))
         .name("unary")
         .map(|(mut ops, ex)| {
             ops.drain(..)
@@ -252,22 +257,22 @@ fn p_expr_1<'a>() -> Parser<'a, Expr> {
 }
 
 /// Vector of atom-like things
-fn p_expr_2<'a>() -> Parser<'a, Expr> {
-    list(call(p_expr_1), whitespace(1))
+fn p_expr_3<'a>() -> Parser<'a, Expr> {
+    list(call(p_expr_2), whitespace(1))
         .convert(|v| {
             if v.len() == 0 {
                 Err(String::from("expected non-empty vector"))
             } else {
-                Ok(Expr::Vector(v.to_vec()))
+                Ok(Expr::Vector(v))
             }
         })
         .name("vector")
 }
 
 /// Binary comparison operators
-fn p_expr_3<'a>() -> Parser<'a, Expr> {
+fn p_expr_4<'a>() -> Parser<'a, Expr> {
     left_recurse(
-        p_expr_2,
+        p_expr_3,
         symbol(comp_op()),
         "binary comparison",
         |e1, op, e2| Expr::Binary(Box::new(e1), BinOp::CompOp(op), Box::new(e2)),
@@ -275,41 +280,39 @@ fn p_expr_3<'a>() -> Parser<'a, Expr> {
 }
 
 /// Power (**) of unary'd vector
-fn p_expr_4<'a>() -> Parser<'a, Expr> {
+fn p_expr_5<'a>() -> Parser<'a, Expr> {
     let op_p = symbol(operator("**")).map(|_| BinOp::Pow);
-    left_recurse(p_expr_3, op_p, "power", |e1, op, e2| {
+    left_recurse(p_expr_4, op_p, "power", |e1, op, e2| {
         Expr::Binary(Box::new(e1), op, Box::new(e2))
     })
 }
 
 /// Product (*, /, %) of powers
-fn p_expr_5<'a>() -> Parser<'a, Expr> {
+fn p_expr_6<'a>() -> Parser<'a, Expr> {
     let op_p = symbol(operator("*")).map(|_| BinOp::Mul)
         | symbol(operator("/")).map(|_| BinOp::Div)
         | symbol(operator("%")).map(|_| BinOp::Mod);
-    left_recurse(p_expr_4, op_p, "product", |e1, op, e2| {
+    left_recurse(p_expr_5, op_p, "product", |e1, op, e2| {
         Expr::Binary(Box::new(e1), op, Box::new(e2))
     })
 }
 
 /// Sum (+, -) of products
-fn p_expr_6<'a>() -> Parser<'a, Expr> {
-    let op_no_spaces = || sym('+').map(|_| BinOp::Add) | sym('-').map(|_| BinOp::Sub);
-    let op_p = (one_whitespace().repeat(1..) * op_no_spaces() - one_whitespace().repeat(1..))
-        | (op_no_spaces() - whitespace(0));
+fn p_expr_7<'a>() -> Parser<'a, Expr> {
+    let op_p = symbol(sym('+')).map(|_| BinOp::Add) | symbol(sym('-')).map(|_| BinOp::Sub);
 
-    left_recurse(p_expr_5, op_p, "sum", |e1, op, e2| {
+    left_recurse(p_expr_6, op_p, "sum", |e1, op, e2| {
         Expr::Binary(Box::new(e1), op, Box::new(e2))
     })
 }
 
-fn p_expr_7<'a>() -> Parser<'a, Expr> {
+fn p_expr_8<'a>() -> Parser<'a, Expr> {
     let op_un = symbol(operator("iota")).map(|_| UnOp::Iota)
         | symbol(operator("abs")).map(|_| UnOp::Abs)
         | symbol(operator("rho")).map(|_| UnOp::Rho)
         | symbol(operator("rev")).map(|_| UnOp::Rev);
 
-    (op_un.repeat(0..) + call(p_expr_6))
+    (op_un.repeat(0..) + call(p_expr_7))
         .map(|(mut ops, ex)| {
             ops.drain(..)
                 .rev()
@@ -318,34 +321,36 @@ fn p_expr_7<'a>() -> Parser<'a, Expr> {
         .name("special unary")
 }
 
-fn p_expr_8<'a>() -> Parser<'a, Expr> {
+fn p_expr_9<'a>() -> Parser<'a, Expr> {
     let op_bin = symbol(operator("skip")).map(|_| BinOp::Skip)
         | symbol(operator("rho")).map(|_| BinOp::Rho)
         | symbol(operator("unpack")).map(|_| BinOp::Unpack)
         | symbol(operator("pack")).map(|_| BinOp::Pack)
         | symbol(operator("log")).map(|_| BinOp::Log);
 
-    right_recurse(p_expr_7, op_bin, "special binary", |e1, op, e2| {
+    right_recurse(p_expr_8, op_bin, "special binary", |e1, op, e2| {
         Expr::Binary(Box::new(e1), op, Box::new(e2))
     })
 }
 
 /// Fold
-fn p_expr_9<'a>() -> Parser<'a, Expr> {
-    let op_p = symbol(binary_op()).map(FoldOp::BinOp) | p_varname().map(FoldOp::FunctionRef);
+fn p_expr_10<'a>() -> Parser<'a, Expr> {
+    let op_p = binary_op().map(FoldOp::BinOp) | p_varname().map(FoldOp::FunctionRef);
     let fold = (op_p - symbol(operator("//")) + call(p_expr))
         .map(|(op, expr)| Expr::Fold(op, Box::new(expr)));
 
-    (fold).name("fold") | p_expr_8()
+    (fold).name("fold") | p_expr_9()
 }
 
 fn p_expr<'a>() -> Parser<'a, Expr> {
-    p_expr_9()
+    p_expr_10()
 }
 
 /// Function declare
 fn p_fun<'a>() -> Parser<'a, Statement> {
-    (operator("fn") * symbol(p_varname()) + symbol(p_varname()).repeat(1..) - symbol(operator("="))
+    (symbol(operator("fn")) * p_varname()
+        + (one_whitespace().repeat(1..) * p_varname()).repeat(1..)
+        - symbol(operator("="))
         + call(p_expr))
     .map(|((fnname, args), body)| Statement::FunDeclare(fnname, args, body))
     .name("function")
