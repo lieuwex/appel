@@ -12,8 +12,8 @@ fn left_recurse<'a, E: 'a, O: 'a>(
     combine: impl Fn(E, O, E) -> E + 'a,
 ) -> Parser<'a, E> {
     (atom_p() + (op_p + atom_p()).repeat(0..))
-        .map(move |(expr, mut v)| {
-            v.drain(..)
+        .map(move |(expr, v)| {
+            v.into_iter()
                 .fold(expr, |acc, (op, expr2)| combine(acc, op, expr2))
         })
         .name(name)
@@ -25,8 +25,8 @@ fn right_recurse<'a, E: 'a, O: 'a>(
     combine: impl Fn(E, O, E) -> E + 'a,
 ) -> Parser<'a, E> {
     ((atom_p() + op_p).repeat(0..) + atom_p())
-        .map(move |(mut v, expr)| {
-            v.drain(..)
+        .map(move |(v, expr)| {
+            v.into_iter()
                 .rev()
                 .fold(expr, |acc, (expr1, op)| combine(expr1, op, acc))
         })
@@ -88,7 +88,7 @@ fn operator<'a>(text: &'static str) -> Parser<'a, ()> {
 }
 
 fn integer_decimal(s: &[char]) -> Result<BigUint, num_bigint::ParseBigIntError> {
-    if s.len() == 0 {
+    if s.is_empty() {
         Ok(BigUint::zero())
     } else {
         s.iter().collect::<String>().parse::<BigUint>()
@@ -96,16 +96,16 @@ fn integer_decimal(s: &[char]) -> Result<BigUint, num_bigint::ParseBigIntError> 
 }
 
 fn integer_hex(s: &[char]) -> Result<BigUint, &str> {
-    if s.len() == 0 {
+    if s.is_empty() {
         return Err("Empty string cannot be a hexadecimal number");
     }
 
     let from_hex_digit = |c: char| {
         let c = c.to_ascii_lowercase();
         if '0' <= c && c <= '9' {
-            Ok((c as u8) - ('0' as u8))
+            Ok((c as u8) - b'0')
         } else if 'a' <= c && c <= 'f' {
-            Ok((c as u8) - ('a' as u8) + 10)
+            Ok((c as u8) - b'a' + 10)
         } else {
             Err("Invalid argument to from_hex_digit")
         }
@@ -144,11 +144,11 @@ fn p_digit<'a>() -> Parser<'a, char> {
 }
 
 fn p_posexp<'a>() -> Parser<'a, BigUint> {
-    sym('e') * p_digit().repeat(1..).collect().convert(integer_decimal)
+    (sym('e') * p_digit().repeat(1..).collect().convert(integer_decimal))
         | empty().map(|_| Zero::zero())
 }
 
-fn negative<'a, T: 'static>(p: Parser<'a, T>) -> Parser<'a, T>
+fn negative<T: 'static>(p: Parser<T>) -> Parser<T>
 where
     T: std::ops::Neg<Output = T>,
 {
@@ -159,14 +159,14 @@ where
 }
 
 fn p_exp<'a>() -> Parser<'a, BigInt> {
-    sym('e')
+    (sym('e')
         * negative(
             p_digit()
                 .repeat(1..)
                 .collect()
                 .convert(integer_decimal)
                 .map(BigInt::from),
-        )
+        ))
         | empty().map(|_| Zero::zero())
 }
 
@@ -249,8 +249,8 @@ fn p_expr_2<'a>() -> Parser<'a, Expr> {
 
     (unary.repeat(0..) + call(p_expr_1))
         .name("unary")
-        .map(|(mut ops, ex)| {
-            ops.drain(..)
+        .map(|(ops, ex)| {
+            ops.into_iter()
                 .rev()
                 .fold(ex, |acc, op| Expr::Unary(op, Box::new(acc)))
         })
@@ -260,7 +260,7 @@ fn p_expr_2<'a>() -> Parser<'a, Expr> {
 fn p_expr_3<'a>() -> Parser<'a, Expr> {
     list(call(p_expr_2), whitespace(1))
         .convert(|v| {
-            if v.len() == 0 {
+            if v.is_empty() {
                 Err(String::from("expected non-empty vector"))
             } else {
                 Ok(Expr::Vector(v))
@@ -313,8 +313,8 @@ fn p_expr_8<'a>() -> Parser<'a, Expr> {
         | symbol(operator("rev")).map(|_| UnOp::Rev);
 
     (op_un.repeat(0..) + call(p_expr_7))
-        .map(|(mut ops, ex)| {
-            ops.drain(..)
+        .map(|(ops, ex)| {
+            ops.into_iter()
                 .rev()
                 .fold(ex, |acc, op| Expr::Unary(op, Box::new(acc)))
         })
@@ -382,6 +382,6 @@ fn p_statement<'a>() -> Parser<'a, Statement> {
 
 pub fn parse(source: &str) -> Result<Option<Statement>, pom::Error> {
     let chars = source.chars().collect::<Vec<_>>();
-    let res = (whitespace(0) * p_statement().opt() - whitespace(0) - end()).parse(&chars);
-    res
+    let parser = whitespace(0) * p_statement().opt() - whitespace(0) - end();
+    parser.parse(&chars)
 }

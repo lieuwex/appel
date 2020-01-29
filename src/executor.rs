@@ -121,7 +121,7 @@ impl fmt::Display for Matrix {
                         let val = self.get_at(vec![i, j]).unwrap();
                         write!(&mut writer, "{}\t", val).or(Err(fmt::Error {}))?;
                     }
-                    write!(writer, "\n").or(Err(fmt::Error {}))?;
+                    writeln!(writer).or(Err(fmt::Error {}))?;
                 }
 
                 writer.flush().or(Err(fmt::Error {}))?;
@@ -151,7 +151,7 @@ impl Matrix {
     }
 
     pub fn is_scalar(&self) -> bool {
-        return self.values.len() == 1;
+        self.values.len() == 1
     }
 
     pub fn scalar(&self) -> Option<&Ratio> {
@@ -241,7 +241,7 @@ fn get_comp_op_fn(op: CompOp) -> impl Fn(&Ratio, &Ratio) -> Ratio {
     move |a: &Ratio, b: &Ratio| -> Ratio { Ratio::from_u8(fun(a, b) as u8).unwrap() }
 }
 
-fn call_binary(op: BinOp, a: Matrix, mut b: Matrix) -> Result<ExecutorResult, String> {
+fn call_binary(op: BinOp, a: Matrix, b: Matrix) -> Result<ExecutorResult, String> {
     let get_int = |m: Matrix| -> Result<BigInt, String> {
         let s = expect_scalar(ExecutorResult::Value(Value::Matrix(m)))?;
         if s.is_integer() {
@@ -318,7 +318,7 @@ fn call_binary(op: BinOp, a: Matrix, mut b: Matrix) -> Result<ExecutorResult, St
             let n = scalar.to_integer().to_usize().unwrap_or(std::usize::MAX);
 
             ok_matrix!(Matrix {
-                values: b.values.drain(..).skip(n).collect(),
+                values: b.values.into_iter().skip(n).collect(),
                 shape: b.shape,
             })
         }
@@ -347,10 +347,10 @@ fn call_binary(op: BinOp, a: Matrix, mut b: Matrix) -> Result<ExecutorResult, St
                 return Err(String::from("radix must be greater than or equal to 2"));
             }
 
-            let (sign, mut bits) = b.to_radix_be(radix);
+            let (sign, bits) = b.to_radix_be(radix);
 
             let values: Vec<Ratio> = bits
-                .drain(..)
+                .into_iter()
                 .map(|b| Ratio::from_u8(b).unwrap())
                 .map(|b| {
                     if sign == num_bigint::Sign::Minus {
@@ -410,9 +410,9 @@ impl Executor {
 
         macro_rules! for_all {
             ($f:expr) => {{
-                let mut val = Matrix::try_from(res)?;
+                let val = Matrix::try_from(res)?;
 
-                let values = val.values.drain(..).map($f).collect();
+                let values = val.values.into_iter().map($f).collect();
                 let new = Matrix {
                     values: values,
                     shape: val.shape,
@@ -451,8 +451,8 @@ impl Executor {
             }
 
             UnOp::Rev => {
-                let mut m = Matrix::try_from(res)?;
-                let values: Vec<Ratio> = m.values.drain(..).rev().collect();
+                let m = Matrix::try_from(res)?;
+                let values: Vec<Ratio> = m.values.into_iter().rev().collect();
                 ok_matrix!(Matrix {
                     values,
                     shape: m.shape,
@@ -470,14 +470,14 @@ impl Executor {
     }
 
     fn execute_fold(&mut self, op: FoldOp, expr: Expr) -> Result<ExecutorResult, String> {
-        let mut matrix = Matrix::try_from(self.execute_expr(expr)?)?;
+        let matrix = Matrix::try_from(self.execute_expr(expr)?)?;
         if matrix.values.len() < 2 {
             return Err(String::from("matrix has to have at least 2 values"));
         }
 
         match op {
             FoldOp::BinOp(op) => {
-                let mut it = matrix.values.drain(..);
+                let mut it = matrix.values.into_iter();
                 let first = it.next().unwrap();
                 it.try_fold(
                     ExecutorResult::Value(Value::Matrix(Matrix::from(first))),
@@ -489,15 +489,15 @@ impl Executor {
             }
 
             FoldOp::FunctionRef(f) => match self.variables.get(&f) {
-                None => return Err(format!("variable {} not found", f)),
+                None => Err(format!("variable {} not found", f)),
                 Some(v) => match v {
-                    Value::Matrix(_) => return Err(String::from("variable is a matrix")),
+                    Value::Matrix(_) => Err(String::from("variable is a matrix")),
                     Value::Function(f) => {
                         if f.params.len() != 2 {
                             return Err(String::from("function does not take 2 params"));
                         }
 
-                        let mut it = matrix.values.drain(..);
+                        let mut it = matrix.values.into_iter();
                         let first = it.next().unwrap();
                         it.try_fold(Matrix::from(first), |acc, item| -> Result<Matrix, String> {
                             let args = vec![acc, Matrix::from(item)];
@@ -526,16 +526,16 @@ impl Executor {
                 }
             }
 
-            Expr::Vector(mut v) => {
+            Expr::Vector(v) => {
                 let mut expressions = Vec::with_capacity(v.len());
-                for e in v.drain(..) {
+                for e in v.into_iter() {
                     expressions.push(self.execute_expr(e)?.unwrap());
                 }
 
                 match expressions[0].clone() {
                     Value::Function(f) => {
                         let mut args = Vec::with_capacity(expressions.len() - 1);
-                        for e in expressions.drain(..).skip(1) {
+                        for e in expressions.into_iter().skip(1) {
                             args.push(Matrix::try_from(ExecutorResult::Value(e))?);
                         }
 
@@ -548,7 +548,7 @@ impl Executor {
                         }
 
                         let mut values = Vec::with_capacity(expressions.len());
-                        for e in expressions.drain(..) {
+                        for e in expressions.into_iter() {
                             let scalar = match Matrix::try_from(e)?.scalar() {
                                 None => return Err(String::from("nested matrices aren't allowed")),
                                 Some(s) => s.clone(),

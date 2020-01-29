@@ -39,7 +39,7 @@ fn main() {
             Err(e) => eprintln!("{}\n", e),
             Ok(r) => {
                 if r.is_empty() {
-                    println!("")
+                    println!()
                 } else {
                     println!("{}\n", r)
                 }
