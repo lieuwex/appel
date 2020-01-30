@@ -261,12 +261,10 @@ fn p_expr_2<'a>() -> Parser<'a, Expr> {
 /// Vector of atom-like things
 fn p_expr_3<'a>() -> Parser<'a, Expr> {
     list(call(p_expr_2), whitespace(1))
-        .convert(|v| {
-            if v.is_empty() {
-                Err(String::from("expected non-empty vector"))
-            } else {
-                Ok(Expr::Vector(v))
-            }
+        .convert(|v| match v.len() {
+            0 => Err(String::from("expected non-empty vector")),
+            1 => Ok(v.into_iter().next().unwrap()),
+            _ => Ok(Expr::Vector(v)),
         })
         .name("vector")
 }
