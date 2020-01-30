@@ -18,17 +18,16 @@ fn left_recurse<'a, E: 'a, O: 'a>(
         })
         .name(name)
 }
-fn right_recurse<'a, E: 'a, O: 'a>(
-    atom_p: impl Fn() -> Parser<'a, E>,
+fn right_recurse<'a, O: 'a>(
+    atom_p: impl Fn() -> Parser<'a, Expr>,
     op_p: Parser<'a, O>,
     name: &'a str,
-    combine: impl Fn(E, O, E) -> E + 'a,
-) -> Parser<'a, E> {
-    ((atom_p() + op_p).repeat(0..) + atom_p())
-        .map(move |(v, expr)| {
-            v.into_iter()
-                .rev()
-                .fold(expr, |acc, (expr1, op)| combine(expr1, op, acc))
+    combine: impl Fn(Expr, O, Expr) -> Expr + 'a,
+) -> Parser<'a, Expr> {
+    (atom_p() + (op_p + call(p_expr)).opt())
+        .map(move |(a, b)| match b {
+            None => a,
+            Some((op, b)) => combine(a, op, b),
         })
         .name(name)
 }
