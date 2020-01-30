@@ -66,16 +66,11 @@ fn check_reserved(s: String) -> Result<String, String> {
     }
 }
 
-fn one_whitespace<'a>() -> Parser<'a, ()> {
-    is_a(|c: char| c.is_ascii_whitespace())
-        .discard()
-        .name("whitespace")
-}
 fn whitespace<'a>(min: usize) -> Parser<'a, ()> {
-    one_whitespace()
+    is_a(|c: char| c.is_ascii_whitespace())
         .repeat(min..)
         .discard()
-        .name("optional whitespace")
+        .name("whitespace")
 }
 
 fn symbol_left<'a, T: 'a>(p: Parser<'a, T>) -> Parser<'a, T> {
@@ -356,8 +351,7 @@ fn p_expr<'a>() -> Parser<'a, Expr> {
 
 /// Function declare
 fn p_fun<'a>() -> Parser<'a, Statement> {
-    (symbol_right(operator("fn")) * p_varname()
-        + (one_whitespace().repeat(1..) * p_varname()).repeat(1..)
+    (symbol_right(operator("fn")) * p_varname() + (whitespace(1) * p_varname()).repeat(1..)
         - symbol_both(operator("="))
         + call(p_expr))
     .map(|((fnname, args), body)| Statement::FunDeclare(fnname, args, body))
