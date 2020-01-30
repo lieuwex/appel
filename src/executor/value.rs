@@ -1,5 +1,3 @@
-use std::fmt;
-
 use super::function::Function;
 use super::matrix::Matrix;
 
@@ -7,15 +5,6 @@ use super::matrix::Matrix;
 pub enum Value {
     Matrix(Matrix),
     Function(Function),
-}
-
-impl fmt::Display for Value {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Value::Matrix(m) => write!(f, "{}", m),
-            Value::Function(fun) => write!(f, "{}", fun),
-        }
-    }
 }
 
 impl From<Matrix> for Value {

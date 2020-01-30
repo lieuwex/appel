@@ -1,9 +1,10 @@
 #[allow(clippy::module_inception)]
-mod executor;
-mod function;
-mod matrix;
-mod result;
-mod value;
+pub mod executor;
+pub mod function;
+pub mod matrix;
+pub mod result;
+pub mod value;
 
 pub use executor::Executor;
 pub use result::ExecutorResult;
+pub use value::Value;

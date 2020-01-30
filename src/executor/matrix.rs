@@ -1,12 +1,30 @@
+use super::executor::to_f64;
 use super::result::ExecutorResult;
 use super::value::Value;
 use crate::ast::*;
 
 use std::convert::TryFrom;
-use std::fmt;
 use std::io::Write;
 
 use tabwriter::{Alignment, TabWriter};
+
+#[derive(Clone, Copy)]
+pub enum Formatter {
+    Float(usize), // precision
+    Ratio,
+}
+
+impl Formatter {
+    fn apply(self, rat: &Ratio) -> String {
+        match self {
+            Formatter::Float(precision) => {
+                let f = to_f64(rat);
+                format!("{1:.0$}", precision, f)
+            }
+            Formatter::Ratio => format!("{}", rat),
+        }
+    }
+}
 
 #[derive(Clone, Debug)]
 pub struct Matrix {
@@ -14,8 +32,8 @@ pub struct Matrix {
     pub shape: Vec<usize>,
 }
 
-impl fmt::Display for Matrix {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl Matrix {
+    pub fn format(&self, fmt: Formatter) -> String {
         // TODO: actually format
 
         let n_dimensions = self.shape.len();
@@ -29,28 +47,29 @@ impl fmt::Display for Matrix {
                 for i in 0..self.shape[0] {
                     for j in 0..self.shape[1] {
                         let val = self.get_at(vec![i, j]).unwrap();
-                        write!(&mut writer, "{}\t", val).or(Err(fmt::Error {}))?;
+                        write!(&mut writer, "{}\t", fmt.apply(val)).unwrap();
                     }
-                    writeln!(writer).or(Err(fmt::Error {}))?;
+                    writeln!(writer).unwrap();
                 }
 
-                writer.flush().or(Err(fmt::Error {}))?;
-                let s = String::from_utf8(writer.into_inner().unwrap()).unwrap();
-                write!(f, "{}", s)?;
+                writer.flush().unwrap();
+                String::from_utf8(writer.into_inner().unwrap()).unwrap()
             }
 
-            _ => {
-                for (i, val) in self.values.iter().enumerate() {
+            _ => self
+                .values
+                .iter()
+                .enumerate()
+                .map(|(i, val)| {
+                    let val = fmt.apply(val);
                     if i > 0 {
-                        write!(f, " ")?;
+                        format!(" {}", val)
+                    } else {
+                        format!("{}", val)
                     }
-
-                    write!(f, "{}", val)?;
-                }
-            }
+                })
+                .collect::<String>(),
         }
-
-        Ok(())
     }
 }
 

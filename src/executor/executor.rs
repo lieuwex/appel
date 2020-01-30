@@ -15,7 +15,7 @@ use super::matrix::Matrix;
 use super::result::ExecutorResult;
 use super::value::Value;
 
-fn to_f64(val: &Ratio) -> f64 {
+pub fn to_f64(val: &Ratio) -> f64 {
     let (num, den) = val.clone().into();
     let fnum = num.to_f64().unwrap_or(std::f64::MAX);
     let fden = den.to_f64().unwrap_or(std::f64::MAX);
