@@ -70,6 +70,15 @@ fn expect_scalar(v: ExecutorResult) -> Result<Ratio, String> {
     }
 }
 
+fn to_usize_error(rat: &Ratio) -> Result<usize, String> {
+    if !rat.is_integer() {
+        Err("value is not an integer".to_owned())
+    } else {
+        let int = rat.to_integer();
+        int.to_usize().ok_or("value too large for usize".to_owned())
+    }
+}
+
 fn get_comp_op_fn(op: CompOp) -> impl Fn(&Ratio, &Ratio) -> Ratio {
     let fun: &dyn Fn(&Ratio, &Ratio) -> bool = match op {
         CompOp::Eq => &|a, b| a == b,
@@ -157,7 +166,7 @@ fn call_binary(op: BinOp, a: Matrix, b: Matrix) -> Result<ExecutorResult, String
 
         BinOp::Skip => {
             let scalar = expect_scalar(ExecutorResult::Value(Value::Matrix(a)))?;
-            let n = scalar.to_integer().to_usize().unwrap_or(std::usize::MAX);
+            let n = to_usize_error(&scalar)?;
 
             Ok(Matrix {
                 values: b.values.into_iter().skip(n).collect(),
@@ -170,8 +179,8 @@ fn call_binary(op: BinOp, a: Matrix, b: Matrix) -> Result<ExecutorResult, String
             let shape: Vec<usize> = a
                 .values
                 .iter()
-                .map(|v| v.to_integer().to_usize().unwrap_or(std::usize::MAX))
-                .collect();
+                .map(|v| to_usize_error(v))
+                .collect::<Result<_, String>>()?;
 
             let values: Vec<Ratio> = std::iter::repeat(b.values)
                 .flatten()
@@ -301,6 +310,7 @@ impl Executor {
                     Ratio::zero()
                 }
             }),
+
             UnOp::RollInt => for_all!(&|x: Ratio| {
                 if x <= Ratio::zero() {
                     return Err("value must be greater than 0".to_owned());
@@ -325,6 +335,7 @@ impl Executor {
                     .map(|val| x * val)
                     .ok_or("couldn't convert f64 to ratio".to_owned())
             }),
+
             UnOp::Floor => for_all_ok!(&|x: Ratio| x.floor()),
             UnOp::Ceil => for_all_ok!(&|x: Ratio| x.ceil()),
             UnOp::Abs => for_all_ok!(&|x: Ratio| x.abs()),
@@ -341,7 +352,7 @@ impl Executor {
 
             UnOp::Iota => {
                 let s = expect_scalar(res)?;
-                let upper = s.to_integer().to_usize().unwrap_or(std::usize::MAX);
+                let upper = to_usize_error(&s)?;
                 let values: Vec<_> = (0..upper).filter_map(Ratio::from_usize).collect();
                 Ok(Matrix::make_vector(values).into())
             }
@@ -508,14 +519,12 @@ impl Executor {
                     return Err(String::from("rank mismatch"));
                 }
 
-                let item = m.get_at(
-                    indices
-                        .iter()
-                        .map(|i| i.to_integer().to_usize().unwrap_or(std::usize::MAX))
-                        .collect(),
-                );
+                let indices: Vec<usize> = indices
+                    .iter()
+                    .map(|v| to_usize_error(v))
+                    .collect::<Result<_, String>>()?;
 
-                match item {
+                match m.get_at(indices) {
                     None => Err(String::from("out of bounds")),
                     Some(i) => Ok(Matrix::from(i.clone()).into()),
                 }
