@@ -10,6 +10,8 @@ use num_traits::identities::{One, Zero};
 use num_traits::pow::Pow;
 use num_traits::sign::Signed;
 
+use rand::prelude::*;
+
 use super::function::Function;
 use super::matrix::Matrix;
 use super::result::ExecutorResult;
@@ -288,6 +290,11 @@ impl Executor {
                 } else {
                     Ratio::zero()
                 }
+            }),
+            UnOp::Roll => for_all!(&|x: Ratio| {
+                let mut rng = rand::thread_rng();
+                let f: f64 = rng.gen_range(0.0, 1.0);
+                x * Ratio::from_f64(f).unwrap()
             }),
             UnOp::Abs => for_all!(&|x: Ratio| x.abs()),
             UnOp::Sin => for_all!(&|x: Ratio| Ratio::from_f64(to_f64(&x).sin()).unwrap()),

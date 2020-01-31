@@ -248,6 +248,7 @@ fn p_expr_2<'a>() -> Parser<'a, Expr> {
     let unary = operator("+").map(|_| UnOp::Id)
         | operator("-").map(|_| UnOp::Neg)
         | operator("!").map(|_| UnOp::Not)
+        | operator("?").map(|_| UnOp::Roll)
         | symbol_both(operator("sin")).map(|_| UnOp::Sin)
         | symbol_both(operator("cos")).map(|_| UnOp::Cos)
         | symbol_both(operator("tan")).map(|_| UnOp::Tan);

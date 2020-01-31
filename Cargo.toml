@@ -10,3 +10,4 @@ num-bigint = ""
 num-rational = "^0.2.3"
 num-traits = "^0.2.11"  # Note: synchronised with the num-bigint dependency
 tabwriter = "1.2.1"
+rand = "0.7.3"
