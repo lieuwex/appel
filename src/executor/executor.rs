@@ -296,6 +296,8 @@ impl Executor {
                 let f: f64 = rng.gen_range(0.0, 1.0);
                 x * Ratio::from_f64(f).unwrap()
             }),
+            UnOp::Floor => for_all!(&|x: Ratio| x.floor()),
+            UnOp::Ceil => for_all!(&|x: Ratio| x.ceil()),
             UnOp::Abs => for_all!(&|x: Ratio| x.abs()),
             UnOp::Sin => for_all!(&|x: Ratio| Ratio::from_f64(to_f64(&x).sin()).unwrap()),
             UnOp::Cos => for_all!(&|x: Ratio| Ratio::from_f64(to_f64(&x).cos()).unwrap()),

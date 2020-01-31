@@ -15,6 +15,8 @@ pub enum UnOp {
     Sin,
     Cos,
     Tan,
+    Floor,
+    Ceil,
 }
 
 // TODO: precendence for operators.
@@ -33,6 +35,8 @@ impl fmt::Display for UnOp {
             UnOp::Sin => write!(f, "sin "),
             UnOp::Cos => write!(f, "cos "),
             UnOp::Tan => write!(f, "tan "),
+            UnOp::Floor => write!(f, "floor "),
+            UnOp::Ceil => write!(f, "ceil "),
         }
     }
 }
