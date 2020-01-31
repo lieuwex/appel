@@ -228,9 +228,18 @@ fn call_binary(op: BinOp, a: Matrix, b: Matrix) -> Result<ExecutorResult, String
 
 impl Executor {
     pub fn new() -> Self {
-        Self {
+        let mut res = Self {
             variables: HashMap::new(),
-        }
+        };
+
+        let pi = Ratio::new_raw(
+            BigInt::from_usize(2646693125139304345).unwrap(),
+            BigInt::from_usize(842468587426513207).unwrap(),
+        );
+        res.variables
+            .insert(String::from("pi"), Value::Matrix(Matrix::from(pi)));
+
+        res
     }
 
     fn call_function(
@@ -273,6 +282,9 @@ impl Executor {
                 }
             }),
             UnOp::Abs => for_all!(&|x: Ratio| x.abs()),
+            UnOp::Sin => for_all!(&|x: Ratio| Ratio::from_f64(to_f64(&x).sin()).unwrap()),
+            UnOp::Cos => for_all!(&|x: Ratio| Ratio::from_f64(to_f64(&x).cos()).unwrap()),
+            UnOp::Tan => for_all!(&|x: Ratio| Ratio::from_f64(to_f64(&x).tan()).unwrap()),
 
             UnOp::Iota => {
                 let s = expect_scalar(res)?;

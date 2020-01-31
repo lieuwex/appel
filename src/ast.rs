@@ -11,6 +11,9 @@ pub enum UnOp {
     Abs,
     Rho,
     Rev,
+    Sin,
+    Cos,
+    Tan,
 }
 
 // TODO: precendence for operators.
@@ -25,6 +28,9 @@ impl fmt::Display for UnOp {
             UnOp::Abs => write!(f, "abs "),
             UnOp::Rho => write!(f, "rho "),
             UnOp::Rev => write!(f, "rev "),
+            UnOp::Sin => write!(f, "sin "),
+            UnOp::Cos => write!(f, "cos "),
+            UnOp::Tan => write!(f, "tan "),
         }
     }
 }
