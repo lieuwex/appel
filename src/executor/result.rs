@@ -9,7 +9,7 @@ pub enum ExecutorResult {
 
 impl ExecutorResult {
     /// Unwrap into Value
-    pub fn unwrap(self) -> Value {
+    pub fn unwrap_value(self) -> Value {
         match self {
             ExecutorResult::Value(v) => v,
             _ => panic!(),

@@ -475,7 +475,7 @@ impl Executor {
             Expr::Vector(v) => {
                 let mut expressions = Vec::with_capacity(v.len());
                 for e in v.into_iter() {
-                    expressions.push(self.execute_expr(e)?.unwrap());
+                    expressions.push(self.execute_expr(e)?.unwrap_value());
                 }
 
                 match expressions[0].clone() {
