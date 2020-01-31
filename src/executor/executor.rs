@@ -3,6 +3,7 @@ use std::convert::TryFrom;
 use std::ops::Neg;
 
 use crate::ast::*;
+use crate::parser;
 
 use num_bigint::{BigInt, Sign};
 use num_traits::cast::{FromPrimitive, ToPrimitive};
@@ -582,33 +583,43 @@ impl Executor {
             }
 
             Statement::InternalCommand(command, body) => match command.as_str() {
-                "n" | "number" => match self.execute_expr(body)? {
-                    ExecutorResult::None => Err(String::from("can't format nothing to number")),
-                    ExecutorResult::Info(_) => {
-                        Err(String::from("can't format info string to number"))
+                "n" | "number" => {
+                    let parsed =
+                        parser::parse(&body).or(Err("couldn't parse expression".to_owned()))?;
+                    if parsed.is_none() {
+                        return Ok(ExecutorResult::None);
                     }
-                    ExecutorResult::Value(Value::Function(_)) => {
-                        Err(String::from("can't format function to number"))
-                    }
-                    ExecutorResult::Value(Value::Matrix(m)) => {
-                        let s = m
-                            .values
-                            .iter()
-                            .map(to_f64)
-                            .enumerate()
-                            .map(|(i, val)| {
-                                if i == 0 {
-                                    format!("{}", val)
-                                } else {
-                                    format!(" {}", val)
-                                }
-                            })
-                            .collect::<Vec<String>>()
-                            .concat();
+                    let res = self.execute(parsed.unwrap(), false)?;
 
-                        Ok(ExecutorResult::Info(s))
-                    }
-                },
+                    let s = Matrix::try_from(res)?
+                        .values
+                        .iter()
+                        .map(|x| (to_f64(x), x))
+                        .enumerate()
+                        .map(|(i, (val, orig))| {
+                            let s = match val {
+                                None => format!("{}", orig),
+                                Some(f) => format!("{}", f),
+                            };
+
+                            if i == 0 {
+                                format!("{}", s)
+                            } else {
+                                format!(" {}", s)
+                            }
+                        })
+                        .collect::<Vec<String>>()
+                        .concat();
+
+                    Ok(ExecutorResult::Info(s))
+                }
+
+                "s" | "set" => {
+                    let mut it = body.splitn(2, " ").map(|x| x.to_owned());
+                    let key = it.next().unwrap();
+                    let value = it.next().unwrap();
+                    Ok(ExecutorResult::Setting(key, value))
+                }
 
                 cmd => Err(format!("unknown command {}", cmd)),
             },

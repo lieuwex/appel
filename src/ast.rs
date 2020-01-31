@@ -171,7 +171,7 @@ pub enum Statement {
     Assign(String, Expr),
     // name, parameters, tree
     FunDeclare(String, Vec<String>, Expr),
-    InternalCommand(String, Expr),
+    InternalCommand(String, String),
 }
 
 impl fmt::Display for Statement {

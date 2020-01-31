@@ -42,6 +42,24 @@ impl State {
             Ok(ExecutorResult::None) => Ok(String::new()),
             Ok(ExecutorResult::Value(res)) => Ok(format_res(res, self.formatter)),
             Ok(ExecutorResult::Info(s)) => Ok(s),
+            Ok(ExecutorResult::Setting(key, val)) => {
+                match key.to_ascii_lowercase().as_str() {
+                    "f" | "format" => {
+                        self.formatter = match val.to_ascii_lowercase().as_str() {
+                            "rat" | "ratio" => Formatter::Ratio,
+                            n => {
+                                let precision = n
+                                    .trim()
+                                    .parse::<usize>()
+                                    .or(Err("conversion error".to_owned()))?;
+                                Formatter::Float(precision)
+                            }
+                        };
+                    }
+                    setting => return Err(format!("unknown setting {}", setting)),
+                };
+                Ok(String::new())
+            }
         }
     }
 }
@@ -49,7 +67,7 @@ impl State {
 fn main() {
     let mut state = State {
         exec: Executor::new(),
-        formatter: Formatter::Float(5),
+        formatter: Formatter::Ratio,
     };
 
     for line in std::io::stdin().lock().lines() {

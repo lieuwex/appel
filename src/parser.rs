@@ -380,9 +380,13 @@ fn p_command<'a>() -> Parser<'a, Statement> {
             .map(|x| x.iter().collect::<String>())
     };
 
-    (symbol_right(operator(")")) * not_whitespace_word() - whitespace(0) + call(p_expr))
-        .map(|(name, expr)| Statement::InternalCommand(name, expr))
-        .name("assign")
+    (symbol_right(operator(")")) * not_whitespace_word() - whitespace(0)
+        + is_a(|_| true)
+            .repeat(0..)
+            .collect()
+            .map(|s| s.iter().collect::<String>()))
+    .map(|(name, body)| Statement::InternalCommand(name, body))
+    .name("assign")
 }
 
 fn p_statement<'a>() -> Parser<'a, Statement> {

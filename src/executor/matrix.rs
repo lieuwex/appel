@@ -133,6 +133,7 @@ impl TryFrom<ExecutorResult> for Matrix {
         match res {
             ExecutorResult::None => Err(String::from("expected value")),
             ExecutorResult::Info(_) => Err(String::from("expected value, got an info string")),
+            ExecutorResult::Setting(_, _) => Err(String::from("expected value, got a setting")),
             ExecutorResult::Value(val) => Matrix::try_from(val),
         }
     }

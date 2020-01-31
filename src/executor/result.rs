@@ -5,6 +5,7 @@ pub enum ExecutorResult {
     None,
     Value(Value),
     Info(String),
+    Setting(String, String),
 }
 
 impl ExecutorResult {
