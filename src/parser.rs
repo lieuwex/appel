@@ -336,7 +336,8 @@ fn p_expr_9<'a>() -> Parser<'a, Expr> {
         | symbol_both(operator("rho")).map(|_| BinOp::Rho)
         | symbol_both(operator("unpack")).map(|_| BinOp::Unpack)
         | symbol_both(operator("pack")).map(|_| BinOp::Pack)
-        | symbol_both(operator("log")).map(|_| BinOp::Log);
+        | symbol_both(operator("log")).map(|_| BinOp::Log)
+        | symbol_both(operator(",")).map(|_| BinOp::Concat);
 
     right_recurse(p_expr_8, op_bin, "special binary", |e1, op, e2| {
         Expr::Binary(Box::new(e1), op, Box::new(e2))

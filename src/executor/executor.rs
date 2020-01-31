@@ -170,6 +170,19 @@ fn call_binary(op: BinOp, a: Matrix, b: Matrix) -> Result<ExecutorResult, String
         BinOp::Log => apply!(|a, b| log(a, b).ok_or("error while converting to float".to_owned())),
         BinOp::CompOp(x) => apply_ok!(get_comp_op_fn(x)),
 
+        BinOp::Concat => {
+            if a.shape != b.shape {
+                return Err(String::from("rank mismatch"));
+            }
+
+            let values: Vec<Ratio> = a.values.into_iter().chain(b.values).collect();
+            Ok(Matrix {
+                values,
+                shape: a.shape,
+            }
+            .into())
+        }
+
         BinOp::Skip => {
             let scalar = expect_scalar(ExecutorResult::Value(Value::Matrix(a)))?;
             let n = to_usize_error(&scalar)?;
