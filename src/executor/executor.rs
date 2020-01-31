@@ -272,36 +272,58 @@ impl Executor {
             ($f:expr) => {{
                 let val = Matrix::try_from(res)?;
 
-                let values = val.values.into_iter().map($f).collect();
+                let values: Result<Vec<Ratio>, String> = val.values.into_iter().map($f).collect();
+                let values = match values {
+                    Err(e) => return Err(e),
+                    Ok(s) => s,
+                };
+
                 let new = Matrix {
-                    values: values,
+                    values,
                     shape: val.shape,
                 };
                 Ok(new.into())
             }};
         }
+        macro_rules! for_all_ok {
+            ($f:expr) => {
+                for_all!(&|x: Ratio| Ok($f(x)))
+            };
+        }
 
         match op {
             UnOp::Id => Ok(res),
-            UnOp::Neg => for_all!(&|x: Ratio| x.neg()),
-            UnOp::Not => for_all!(&|x: Ratio| {
+            UnOp::Neg => for_all_ok!(&|x: Ratio| x.neg()),
+            UnOp::Not => for_all_ok!(&|x: Ratio| {
                 if x == Ratio::zero() {
                     Ratio::one()
                 } else {
                     Ratio::zero()
                 }
             }),
-            UnOp::Roll => for_all!(&|x: Ratio| {
+            UnOp::RollInt => for_all!(&|x: Ratio| {
+                if x <= Ratio::zero() {
+                    return Err("value must be greater than 0".to_owned());
+                }
+
                 let mut rng = rand::thread_rng();
-                let f: f64 = rng.gen_range(0.0, 1.0);
-                x * Ratio::from_f64(f).unwrap()
+                let upper: u64 = x.to_integer().to_u64().unwrap_or(std::u64::MAX);
+                let val: u64 = rng.gen_range(0, upper);
+                Ratio::from_u64(val).ok_or("couldn't convert u64 to ratio".to_owned())
             }),
-            UnOp::Floor => for_all!(&|x: Ratio| x.floor()),
-            UnOp::Ceil => for_all!(&|x: Ratio| x.ceil()),
-            UnOp::Abs => for_all!(&|x: Ratio| x.abs()),
-            UnOp::Sin => for_all!(&|x: Ratio| Ratio::from_f64(to_f64(&x).sin()).unwrap()),
-            UnOp::Cos => for_all!(&|x: Ratio| Ratio::from_f64(to_f64(&x).cos()).unwrap()),
-            UnOp::Tan => for_all!(&|x: Ratio| Ratio::from_f64(to_f64(&x).tan()).unwrap()),
+            UnOp::Floor => for_all_ok!(&|x: Ratio| x.floor()),
+            UnOp::Ceil => for_all_ok!(&|x: Ratio| x.ceil()),
+            UnOp::Abs => for_all_ok!(&|x: Ratio| x.abs()),
+            UnOp::Sin | UnOp::Cos | UnOp::Tan => for_all!(&|x: Ratio| {
+                let f = to_f64(&x);
+                let res = match op {
+                    UnOp::Sin => f.sin(),
+                    UnOp::Cos => f.cos(),
+                    UnOp::Tan => f.tan(),
+                    _ => unreachable!(),
+                };
+                Ratio::from_f64(res).ok_or("invalid result".to_owned())
+            }),
 
             UnOp::Iota => {
                 let s = expect_scalar(res)?;
