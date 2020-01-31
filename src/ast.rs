@@ -15,6 +15,8 @@ pub enum UnOp {
     Sin,
     Cos,
     Tan,
+    Up,
+    Down,
     Floor,
     Ceil,
 }
@@ -35,6 +37,8 @@ impl fmt::Display for UnOp {
             UnOp::Sin => write!(f, "sin "),
             UnOp::Cos => write!(f, "cos "),
             UnOp::Tan => write!(f, "tan "),
+            UnOp::Up => write!(f, "up "),
+            UnOp::Down => write!(f, "down "),
             UnOp::Floor => write!(f, "floor "),
             UnOp::Ceil => write!(f, "ceil "),
         }

@@ -329,6 +329,29 @@ impl Executor {
                 }
                 .into())
             }
+
+            UnOp::Up | UnOp::Down => {
+                let matrix = Matrix::try_from(res)?;
+                let mut values: Vec<(usize, Ratio)> =
+                    matrix.values.into_iter().enumerate().collect();
+
+                values.sort_by(|a, b| a.1.cmp(&b.1));
+
+                let values: Vec<Ratio> = (if op == UnOp::Up {
+                    values
+                } else {
+                    values.into_iter().rev().collect()
+                })
+                .into_iter()
+                .map(|v| Ratio::from_usize(v.0).unwrap())
+                .collect();
+
+                Ok(Matrix {
+                    values,
+                    shape: matrix.shape,
+                }
+                .into())
+            }
         }
     }
 

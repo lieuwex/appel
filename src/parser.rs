@@ -317,7 +317,9 @@ fn p_expr_8<'a>() -> Parser<'a, Expr> {
     let op_un = symbol_both(operator("iota")).map(|_| UnOp::Iota)
         | symbol_both(operator("abs")).map(|_| UnOp::Abs)
         | symbol_both(operator("rho")).map(|_| UnOp::Rho)
-        | symbol_both(operator("rev")).map(|_| UnOp::Rev);
+        | symbol_both(operator("rev")).map(|_| UnOp::Rev)
+        | symbol_both(operator("up")).map(|_| UnOp::Up)
+        | symbol_both(operator("down")).map(|_| UnOp::Down);
 
     (op_un.repeat(0..) + call(p_expr_7))
         .map(|(ops, ex)| {
