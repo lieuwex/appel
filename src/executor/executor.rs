@@ -17,13 +17,13 @@ use super::matrix::Matrix;
 use super::result::ExecutorResult;
 use super::value::Value;
 
-pub fn to_f64(val: &Ratio) -> f64 {
+pub fn to_f64(val: &Ratio) -> Option<f64> {
     let (num, den) = (val.numer(), val.denom());
-    let fnum = num.to_f64().unwrap_or(std::f64::MAX);
-    let fden = den.to_f64().unwrap_or(std::f64::MAX);
-    fnum / fden
+    let fnum = num.to_f64()?;
+    let fden = den.to_f64()?;
+    Some(fnum / fden)
 }
-fn pow(a: &Ratio, b: &Ratio) -> Ratio {
+fn pow(a: &Ratio, b: &Ratio) -> Option<Ratio> {
     if a.is_integer() && b.is_integer() {
         let a = a.to_integer();
         let b = b.to_integer();
@@ -35,20 +35,20 @@ fn pow(a: &Ratio, b: &Ratio) -> Ratio {
 
         if let Some(b) = b {
             let res = if is_neg { 1 / a.pow(b) } else { a.pow(b) };
-            return Ratio::from(res);
+            return Some(Ratio::from(res));
         }
     }
 
-    let a = to_f64(a);
-    let b = to_f64(b);
+    let a = to_f64(a)?;
+    let b = to_f64(b)?;
     let res = a.powf(b);
-    Ratio::from_f64(res).unwrap()
+    Ratio::from_f64(res)
 }
-fn log(base: &Ratio, n: &Ratio) -> Ratio {
-    let base = to_f64(base);
-    let n = to_f64(n);
+fn log(base: &Ratio, n: &Ratio) -> Option<Ratio> {
+    let base = to_f64(base)?;
+    let n = to_f64(n)?;
     let res = n.log(base);
-    Ratio::from_f64(res).unwrap()
+    Ratio::from_f64(res)
 }
 
 #[derive(Clone)]
@@ -112,7 +112,7 @@ fn call_binary(op: BinOp, a: Matrix, b: Matrix) -> Result<ExecutorResult, String
                     .iter()
                     .zip(b.values)
                     .map(|(a, b)| $f(a, &b))
-                    .collect();
+                    .collect::<Result<_, String>>()?;
 
                 let matrix = Matrix {
                     values,
@@ -146,23 +146,28 @@ fn call_binary(op: BinOp, a: Matrix, b: Matrix) -> Result<ExecutorResult, String
                             $f(v, scalar)
                         }
                     })
-                    .collect(),
+                    .collect::<Result<_, String>>()?,
                 shape: non_scalar.shape,
             };
 
             Ok(matrix.into())
         }};
     }
+    macro_rules! apply_ok {
+        ($f:expr) => {
+            apply!(|a, b| Ok($f(a, b)))
+        };
+    }
 
     match op {
-        BinOp::Add => apply!(|a, b| a + b),
-        BinOp::Sub => apply!(|a, b| a - b),
-        BinOp::Mul => apply!(|a, b| a * b),
-        BinOp::Div => apply!(|a, b| a / b),
-        BinOp::Mod => apply!(|a, b| a % b),
-        BinOp::Pow => apply!(pow),
-        BinOp::Log => apply!(log),
-        BinOp::CompOp(x) => apply!(get_comp_op_fn(x)),
+        BinOp::Add => apply_ok!(|a, b| a + b),
+        BinOp::Sub => apply_ok!(|a, b| a - b),
+        BinOp::Mul => apply_ok!(|a, b| a * b),
+        BinOp::Div => apply_ok!(|a, b| a / b),
+        BinOp::Mod => apply_ok!(|a, b| a % b),
+        BinOp::Pow => apply!(|a, b| pow(a, b).ok_or("error while converting to float".to_owned())),
+        BinOp::Log => apply!(|a, b| log(a, b).ok_or("error while converting to float".to_owned())),
+        BinOp::CompOp(x) => apply_ok!(get_comp_op_fn(x)),
 
         BinOp::Skip => {
             let scalar = expect_scalar(ExecutorResult::Value(Value::Matrix(a)))?;
@@ -340,7 +345,7 @@ impl Executor {
             UnOp::Ceil => for_all_ok!(&|x: Ratio| x.ceil()),
             UnOp::Abs => for_all_ok!(&|x: Ratio| x.abs()),
             UnOp::Sin | UnOp::Cos | UnOp::Tan => for_all!(&|x: Ratio| {
-                let f = to_f64(&x);
+                let f = to_f64(&x).ok_or("couldn't convert fo f64".to_owned())?;
                 let res = match op {
                     UnOp::Sin => f.sin(),
                     UnOp::Cos => f.cos(),

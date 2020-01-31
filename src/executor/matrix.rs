@@ -17,10 +17,10 @@ pub enum Formatter {
 impl Formatter {
     fn apply(self, rat: &Ratio) -> String {
         match self {
-            Formatter::Float(precision) => {
-                let f = to_f64(rat);
-                format!("{1:.0$}", precision, f)
-            }
+            Formatter::Float(precision) => match to_f64(rat) {
+                None => format!("{}", rat),
+                Some(f) => format!("{1:.0$}", precision, f),
+            },
             Formatter::Ratio => format!("{}", rat),
         }
     }
