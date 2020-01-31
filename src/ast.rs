@@ -142,25 +142,35 @@ pub enum Expr {
 
 impl fmt::Display for Expr {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Expr::Atom(Atom::Rat(v)) => write!(f, "{}", v),
-            Expr::Atom(Atom::Ref(v)) => write!(f, "{}", v),
+        let (s, paren) = match self {
+            Expr::Atom(Atom::Rat(v)) => (format!("{}", v), false),
+            Expr::Atom(Atom::Ref(v)) => (format!("{}", v), false),
 
-            Expr::Vector(exprs) => {
-                for (i, expr) in exprs.iter().enumerate() {
-                    if i > 0 {
-                        write!(f, " ")?;
-                    }
+            Expr::Vector(exprs) => (
+                exprs
+                    .iter()
+                    .enumerate()
+                    .map(|(i, expr)| {
+                        if i > 0 {
+                            format!(" {}", expr)
+                        } else {
+                            format!("{}", expr)
+                        }
+                    })
+                    .collect::<String>(),
+                true,
+            ),
 
-                    write!(f, "{}", expr)?;
-                }
-                Ok(())
-            }
+            Expr::Unary(op, expr) => (format!("{}{}", op, expr), false),
+            Expr::Binary(a, op, b) => (format!("{} {} {}", a, op, b), true),
+            Expr::Fold(op, expr) => (format!("{}//{}", op, expr), true),
+            Expr::Index(vec, indices) => (format!("{}[{}]", vec, indices), false),
+        };
 
-            Expr::Unary(op, expr) => write!(f, "{}{}", op, expr),
-            Expr::Binary(a, op, b) => write!(f, "{} {} {}", a, op, b),
-            Expr::Fold(op, expr) => write!(f, "{}//{}", op, expr),
-            Expr::Index(vec, indices) => write!(f, "{}[{}]", vec, indices),
+        if paren {
+            write!(f, "({})", s)
+        } else {
+            write!(f, "{}", s)
         }
     }
 }
