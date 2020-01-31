@@ -307,7 +307,10 @@ impl Executor {
                 }
 
                 let mut rng = rand::thread_rng();
-                let upper: u64 = x.to_integer().to_u64().unwrap_or(std::u64::MAX);
+                let upper: u64 = x
+                    .to_integer()
+                    .to_u64()
+                    .ok_or("value too large to be rolled".to_owned())?;
                 let val: u64 = rng.gen_range(0, upper);
                 Ratio::from_u64(val).ok_or("couldn't convert u64 to ratio".to_owned())
             }),
