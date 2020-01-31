@@ -314,6 +314,17 @@ impl Executor {
                 let val: u64 = rng.gen_range(0, upper);
                 Ratio::from_u64(val).ok_or("couldn't convert u64 to ratio".to_owned())
             }),
+            UnOp::RollFloat => for_all!(&|x: Ratio| {
+                if x <= Ratio::zero() {
+                    return Err("value must be greater than 0".to_owned());
+                }
+
+                let mut rng = rand::thread_rng();
+                let val: f64 = rng.gen_range(0.0, 1.0);
+                Ratio::from_f64(val)
+                    .map(|val| x * val)
+                    .ok_or("couldn't convert f64 to ratio".to_owned())
+            }),
             UnOp::Floor => for_all_ok!(&|x: Ratio| x.floor()),
             UnOp::Ceil => for_all_ok!(&|x: Ratio| x.ceil()),
             UnOp::Abs => for_all_ok!(&|x: Ratio| x.abs()),
