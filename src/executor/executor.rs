@@ -232,12 +232,20 @@ impl Executor {
             variables: HashMap::new(),
         };
 
-        let pi = Ratio::new_raw(
-            BigInt::from_usize(2646693125139304345).unwrap(),
-            BigInt::from_usize(842468587426513207).unwrap(),
-        );
-        res.variables
-            .insert(String::from("pi"), Value::Matrix(Matrix::from(pi)));
+        macro_rules! add_frac {
+            ($name:expr, $a:expr, $b:expr) => {
+                res.variables.insert(
+                    String::from($name),
+                    Value::Matrix(Matrix::from(Ratio::new_raw(
+                        BigInt::from_usize($a).unwrap(),
+                        BigInt::from_usize($b).unwrap(),
+                    ))),
+                );
+            };
+        }
+
+        add_frac!("pi", 2646693125139304345, 842468587426513207);
+        add_frac!("e", 28875761731, 10622799089);
 
         res
     }
