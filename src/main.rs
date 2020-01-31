@@ -37,7 +37,7 @@ impl State {
 
         println!("parsed as: {:?}", parsed);
 
-        match self.exec.execute(parsed) {
+        match self.exec.execute(parsed, true) {
             Err(e) => Err(format!("error while executing: {}", e)),
             Ok(ExecutorResult::None) => Ok(String::new()),
             Ok(ExecutorResult::Value(res)) => Ok(format_res(res, self.formatter)),

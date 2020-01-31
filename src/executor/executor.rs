@@ -537,7 +537,7 @@ impl Executor {
         }
     }
 
-    pub fn execute(&mut self, node: Statement) -> Result<ExecutorResult, String> {
+    pub fn execute(&mut self, node: Statement, remember: bool) -> Result<ExecutorResult, String> {
         let is_conflict = |old: Option<&Value>, new_is_fun: bool| match old {
             None => false,
             Some(old) => match old {
@@ -614,9 +614,11 @@ impl Executor {
             },
         };
 
-        if let Ok(ExecutorResult::Value(Value::Matrix(m))) = &res {
-            self.variables
-                .insert(String::from("_"), Value::Matrix(m.clone()));
+        if remember {
+            if let Ok(ExecutorResult::Value(Value::Matrix(m))) = &res {
+                self.variables
+                    .insert(String::from("_"), Value::Matrix(m.clone()));
+            }
         }
 
         res
