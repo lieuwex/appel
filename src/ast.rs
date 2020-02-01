@@ -89,6 +89,7 @@ pub enum BinOp {
     Rho,
     Unpack,
     Pack,
+    In,
 }
 
 impl fmt::Display for BinOp {
@@ -109,6 +110,7 @@ impl fmt::Display for BinOp {
             BinOp::Rho => write!(f, "rho"),
             BinOp::Unpack => write!(f, "unpack"),
             BinOp::Pack => write!(f, "pack"),
+            BinOp::In => write!(f, "in"),
         }
     }
 }

@@ -57,7 +57,9 @@ fn binary_op<'a>() -> Parser<'a, BinOp> {
 }
 
 fn check_reserved(s: String) -> Result<String, String> {
-    let reserved = vec!["skip", "rho", "unpack", "pack", "log", "iota", "abs", "rev"];
+    let reserved = vec![
+        "skip", "rho", "unpack", "pack", "log", "iota", "abs", "rev", "in",
+    ];
 
     if reserved.iter().any(|x| *x == s) {
         Err(format!("{} is a reserved keyword", s))
@@ -338,7 +340,8 @@ fn p_expr_9<'a>() -> Parser<'a, Expr> {
         | symbol_both(operator("unpack")).map(|_| BinOp::Unpack)
         | symbol_both(operator("pack")).map(|_| BinOp::Pack)
         | symbol_both(operator("log")).map(|_| BinOp::Log)
-        | symbol_both(operator(",")).map(|_| BinOp::Concat);
+        | symbol_both(operator(",")).map(|_| BinOp::Concat)
+        | symbol_both(operator("in")).map(|_| BinOp::In);
 
     right_recurse(p_expr_8, op_bin, "special binary", |e1, op, e2| {
         Expr::Binary(Box::new(e1), op, Box::new(e2))

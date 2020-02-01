@@ -253,6 +253,27 @@ fn call_binary(op: BinOp, a: Matrix, b: Matrix) -> Result<ExecutorResult, String
             };
             Ok(Matrix::from(Ratio::from_integer(int)).into())
         }
+
+        BinOp::In => {
+            let base_set: Vec<Ratio> = b.values;
+            let values: Vec<Ratio> = a
+                .values
+                .iter()
+                .map(|x| {
+                    if base_set.contains(x) {
+                        Ratio::one()
+                    } else {
+                        Ratio::zero()
+                    }
+                })
+                .collect();
+
+            Ok(Matrix {
+                values,
+                shape: a.shape,
+            }
+            .into())
+        }
     }
 }
 
