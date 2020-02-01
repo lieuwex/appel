@@ -368,6 +368,7 @@ impl Executor {
                 };
                 Ratio::from_f64(res).ok_or("invalid result".to_owned())
             }),
+            UnOp::Sign => for_all_ok!(&|x: Ratio| x.signum()),
 
             UnOp::Iota => {
                 let s = expect_scalar(res)?;

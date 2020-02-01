@@ -20,6 +20,7 @@ pub enum UnOp {
     Down,
     Floor,
     Ceil,
+    Sign,
 }
 
 // TODO: precendence for operators.
@@ -43,6 +44,7 @@ impl fmt::Display for UnOp {
             UnOp::Down => write!(f, "down "),
             UnOp::Floor => write!(f, "floor "),
             UnOp::Ceil => write!(f, "ceil "),
+            UnOp::Sign => write!(f, "sgn "),
         }
     }
 }

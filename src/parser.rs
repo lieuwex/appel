@@ -320,7 +320,8 @@ fn p_expr_8<'a>() -> Parser<'a, Expr> {
         | symbol_both(operator("rho")).map(|_| UnOp::Rho)
         | symbol_both(operator("rev")).map(|_| UnOp::Rev)
         | symbol_both(operator("up")).map(|_| UnOp::Up)
-        | symbol_both(operator("down")).map(|_| UnOp::Down);
+        | symbol_both(operator("down")).map(|_| UnOp::Down)
+        | symbol_both(operator("sgn")).map(|_| UnOp::Sign);
 
     (op_un.repeat(0..) + call(p_expr_7))
         .map(|(ops, ex)| {
