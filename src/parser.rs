@@ -348,17 +348,26 @@ fn p_expr_9<'a>() -> Parser<'a, Expr> {
     })
 }
 
-/// Fold
+/// Scan
 fn p_expr_10<'a>() -> Parser<'a, Expr> {
+    let op_p = binary_op().map(FoldOp::BinOp) | p_varname().map(FoldOp::FunctionRef);
+    let scan = (op_p - symbol_both(operator(r"\\")) + call(p_expr))
+        .map(|(op, expr)| Expr::Scan(op, Box::new(expr)));
+
+    scan.name("scan") | p_expr_9()
+}
+
+/// Fold
+fn p_expr_11<'a>() -> Parser<'a, Expr> {
     let op_p = binary_op().map(FoldOp::BinOp) | p_varname().map(FoldOp::FunctionRef);
     let fold = (op_p - symbol_both(operator("//")) + call(p_expr))
         .map(|(op, expr)| Expr::Fold(op, Box::new(expr)));
 
-    (fold).name("fold") | p_expr_9()
+    fold.name("fold") | p_expr_10()
 }
 
 fn p_expr<'a>() -> Parser<'a, Expr> {
-    p_expr_10()
+    p_expr_11()
 }
 
 /// Function declare

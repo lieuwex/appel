@@ -456,24 +456,61 @@ impl Executor {
         call_binary(op, a, b)
     }
 
-    fn execute_fold(&mut self, op: FoldOp, expr: Expr) -> Result<ExecutorResult, String> {
+    fn execute_fold_scan(
+        &mut self,
+        op: FoldOp,
+        expr: Expr,
+        is_fold: bool,
+    ) -> Result<ExecutorResult, String> {
         let matrix = Matrix::try_from(self.execute_expr(expr)?)?;
         if matrix.values.len() < 2 {
             return Err(String::from("matrix has to have at least 2 values"));
         }
 
+        macro_rules! apply {
+            ($f:expr) => {{
+                if is_fold {
+                    let mut it = matrix.values.into_iter();
+                    let first = it.next().unwrap();
+
+                    // fold
+                    it.try_fold(
+                        ExecutorResult::Value(Value::Matrix(Matrix::from(first))),
+                        |acc, item| -> Result<ExecutorResult, String> {
+                            let acc = Matrix::try_from(acc)?;
+                            $f(acc, Matrix::from(item))
+                        },
+                    )
+                } else {
+                    let items: Vec<Ratio> = matrix.values;
+                    let mut accum = vec![items[0].clone()];
+
+                    let mut i = 1;
+                    loop {
+                        if i >= items.len() {
+                            break Ok(Matrix {
+                                values: accum,
+                                shape: matrix.shape,
+                            }
+                            .into());
+                        }
+
+                        let prev = Matrix::from(accum[i - 1].clone());
+                        let curr = Matrix::from(items[i].clone());
+
+                        match $f(prev, curr) {
+                            e @ Err(_) => break e,
+                            Ok(res) => accum.push(expect_scalar(res)?),
+                        };
+
+                        i += 1;
+                    }
+                }
+            }};
+        }
+
         match op {
-            FoldOp::BinOp(op) => {
-                let mut it = matrix.values.into_iter();
-                let first = it.next().unwrap();
-                it.try_fold(
-                    ExecutorResult::Value(Value::Matrix(Matrix::from(first))),
-                    |acc, item| -> Result<ExecutorResult, String> {
-                        let acc = Matrix::try_from(acc)?;
-                        call_binary(op, acc, Matrix::from(item))
-                    },
-                )
-            }
+            FoldOp::BinOp(op) => apply!(&|acc, item| call_binary(op, acc, item)),
 
             FoldOp::FunctionRef(f) => match self.variables.get(&f) {
                 None => Err(format!("variable {} not found", f)),
@@ -484,14 +521,11 @@ impl Executor {
                             return Err(String::from("function does not take 2 params"));
                         }
 
-                        let mut it = matrix.values.into_iter();
-                        let first = it.next().unwrap();
-                        it.try_fold(Matrix::from(first), |acc, item| -> Result<Matrix, String> {
+                        apply!(&|acc, item| {
                             let args = vec![acc, Matrix::from(item)];
                             let m = Matrix::try_from(self.call_function(f.clone(), args)?)?;
-                            Ok(m)
+                            Ok(ExecutorResult::Value(Value::Matrix(m)))
                         })
-                        .map(|m| ExecutorResult::Value(Value::Matrix(m)))
                     }
                 },
             },
@@ -550,7 +584,8 @@ impl Executor {
 
             Expr::Unary(op, expr) => self.execute_unary(op, *expr),
             Expr::Binary(a, op, b) => self.execute_binary(op, *a, *b),
-            Expr::Fold(op, expr) => self.execute_fold(op, *expr),
+            Expr::Fold(op, expr) => self.execute_fold_scan(op, *expr, true),
+            Expr::Scan(op, expr) => self.execute_fold_scan(op, *expr, false),
 
             Expr::Index(m, indices) => {
                 let indices = expect_vector(self.execute_expr(*indices)?)?;

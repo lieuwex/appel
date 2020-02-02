@@ -143,6 +143,7 @@ pub enum Expr {
     Unary(UnOp, Box<Expr>),
     Binary(Box<Expr>, BinOp, Box<Expr>),
     Fold(FoldOp, Box<Expr>),
+    Scan(FoldOp, Box<Expr>),
     Index(Box<Expr>, Box<Expr>), // vector, indices
 }
 
@@ -170,6 +171,7 @@ impl fmt::Display for Expr {
             Expr::Unary(op, expr) => (format!("{}{}", op, expr), false),
             Expr::Binary(a, op, b) => (format!("{} {} {}", a, op, b), true),
             Expr::Fold(op, expr) => (format!("{}//{}", op, expr), true),
+            Expr::Scan(op, expr) => (format!(r"{}\\{}", op, expr), true),
             Expr::Index(vec, indices) => (format!("{}[{}]", vec, indices), false),
         };
 
