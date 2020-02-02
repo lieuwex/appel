@@ -301,16 +301,21 @@ impl Executor {
         res
     }
 
-    fn call_function(
-        &self,
-        f: Function,
-        args: impl IntoIterator<Item = Matrix>,
-    ) -> Result<ExecutorResult, String> {
+    fn call_function(&self, f: Function, args: Vec<Matrix>) -> Result<ExecutorResult, String> {
+        if args.len() != f.params.len() {
+            return Err(format!(
+                "expected {} arguments got {}",
+                f.params.len(),
+                args.len()
+            ));
+        }
+
         let mut ctx = self.clone();
         for (param, matrix) in f.params.iter().zip(args) {
             ctx.variables
                 .insert(param.to_string(), Value::Matrix(matrix));
         }
+
         ctx.execute_expr(f.expr)
     }
 
