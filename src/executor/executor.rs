@@ -450,6 +450,11 @@ impl Executor {
                 }
                 .into())
             }
+
+            UnOp::Ravel => {
+                let matrix = Matrix::try_from(res)?;
+                Ok(Matrix::make_vector(matrix.values).into())
+            }
         }
     }
 

@@ -252,6 +252,7 @@ fn p_expr_2<'a>() -> Parser<'a, Expr> {
         | operator("!").map(|_| UnOp::Not)
         | operator("?i").map(|_| UnOp::RollInt)
         | operator("?f").map(|_| UnOp::RollFloat)
+        | operator(",").map(|_| UnOp::Ravel)
         | symbol_both(operator("sin")).map(|_| UnOp::Sin)
         | symbol_both(operator("cos")).map(|_| UnOp::Cos)
         | symbol_both(operator("tan")).map(|_| UnOp::Tan)
