@@ -61,7 +61,7 @@ fn check_reserved(s: String) -> Result<String, String> {
         "skip", "rho", "unpack", "pack", "log", "iota", "abs", "rev", "in",
     ];
 
-    if reserved.iter().any(|x| *x == s) {
+    if reserved.contains(&s.as_str()) {
         Err(format!("{} is a reserved keyword", s))
     } else {
         Ok(s)

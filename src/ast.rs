@@ -151,7 +151,7 @@ impl fmt::Display for Expr {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let (s, paren) = match self {
             Expr::Atom(Atom::Rat(v)) => (format!("{}", v), false),
-            Expr::Atom(Atom::Ref(v)) => (format!("{}", v), false),
+            Expr::Atom(Atom::Ref(v)) => (v.to_string(), false),
 
             Expr::Vector(exprs) => (
                 exprs

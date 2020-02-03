@@ -76,7 +76,8 @@ fn to_usize_error(rat: &Ratio) -> Result<usize, String> {
         Err("value is not an integer".to_owned())
     } else {
         let int = rat.to_integer();
-        int.to_usize().ok_or("value too large for usize".to_owned())
+        int.to_usize()
+            .ok_or_else(|| "value too large for usize".to_owned())
     }
 }
 
@@ -166,8 +167,12 @@ fn call_binary(op: BinOp, a: Matrix, b: Matrix) -> Result<ExecutorResult, String
         BinOp::Mul => apply_ok!(|a, b| a * b),
         BinOp::Div => apply_ok!(|a, b| a / b),
         BinOp::Mod => apply_ok!(|a, b| a % b),
-        BinOp::Pow => apply!(|a, b| pow(a, b).ok_or("error while converting to float".to_owned())),
-        BinOp::Log => apply!(|a, b| log(a, b).ok_or("error while converting to float".to_owned())),
+        BinOp::Pow => {
+            apply!(|a, b| pow(a, b).ok_or_else(|| "error while converting to float".to_owned()))
+        }
+        BinOp::Log => {
+            apply!(|a, b| log(a, b).ok_or_else(|| "error while converting to float".to_owned()))
+        }
         BinOp::CompOp(x) => apply_ok!(get_comp_op_fn(x)),
 
         BinOp::Concat => {
@@ -365,9 +370,9 @@ impl Executor {
                 let upper: u64 = x
                     .to_integer()
                     .to_u64()
-                    .ok_or("value too large to be rolled".to_owned())?;
+                    .ok_or_else(|| "value too large to be rolled".to_owned())?;
                 let val: u64 = rng.gen_range(0, upper);
-                Ratio::from_u64(val).ok_or("couldn't convert u64 to ratio".to_owned())
+                Ratio::from_u64(val).ok_or_else(|| "couldn't convert u64 to ratio".to_owned())
             }),
             UnOp::RollFloat => for_all!(&|x: Ratio| {
                 if x <= Ratio::zero() {
@@ -378,21 +383,21 @@ impl Executor {
                 let val: f64 = rng.gen_range(0.0, 1.0);
                 Ratio::from_f64(val)
                     .map(|val| x * val)
-                    .ok_or("couldn't convert f64 to ratio".to_owned())
+                    .ok_or_else(|| "couldn't convert f64 to ratio".to_owned())
             }),
 
             UnOp::Floor => for_all_ok!(&|x: Ratio| x.floor()),
             UnOp::Ceil => for_all_ok!(&|x: Ratio| x.ceil()),
             UnOp::Abs => for_all_ok!(&|x: Ratio| x.abs()),
             UnOp::Sin | UnOp::Cos | UnOp::Tan => for_all!(&|x: Ratio| {
-                let f = to_f64(&x).ok_or("couldn't convert fo f64".to_owned())?;
+                let f = to_f64(&x).ok_or_else(|| "couldn't convert fo f64".to_owned())?;
                 let res = match op {
                     UnOp::Sin => f.sin(),
                     UnOp::Cos => f.cos(),
                     UnOp::Tan => f.tan(),
                     _ => unreachable!(),
                 };
-                Ratio::from_f64(res).ok_or("invalid result".to_owned())
+                Ratio::from_f64(res).ok_or_else(|| "invalid result".to_owned())
             }),
             UnOp::Sign => for_all_ok!(&|x: Ratio| x.signum()),
 
@@ -522,7 +527,7 @@ impl Executor {
                         }
 
                         apply!(&|acc, item| {
-                            let args = vec![acc, Matrix::from(item)];
+                            let args = vec![acc, item];
                             let m = Matrix::try_from(self.call_function(f.clone(), args)?)?;
                             Ok(ExecutorResult::Value(Value::Matrix(m)))
                         })
@@ -659,8 +664,8 @@ impl Executor {
 
             Statement::InternalCommand(command, body) => match command.as_str() {
                 "n" | "number" => {
-                    let parsed =
-                        parser::parse(&body).or(Err("couldn't parse expression".to_owned()))?;
+                    let parsed = parser::parse(&body)
+                        .or_else(|_| Err("couldn't parse expression".to_owned()))?;
                     if parsed.is_none() {
                         return Ok(ExecutorResult::None);
                     }
@@ -678,7 +683,7 @@ impl Executor {
                             };
 
                             if i == 0 {
-                                format!("{}", s)
+                                s
                             } else {
                                 format!(" {}", s)
                             }
@@ -690,7 +695,7 @@ impl Executor {
                 }
 
                 "s" | "set" => {
-                    let mut it = body.splitn(2, " ").map(|x| x.to_owned());
+                    let mut it = body.splitn(2, ' ').map(|x| x.to_owned());
                     let key = it.next().unwrap();
                     let value = it.next().unwrap();
                     Ok(ExecutorResult::Setting(key, value))

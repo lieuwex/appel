@@ -65,7 +65,7 @@ impl Matrix {
                     if i > 0 {
                         format!(" {}", val)
                     } else {
-                        format!("{}", val)
+                        val
                     }
                 })
                 .collect::<String>(),
@@ -91,6 +91,7 @@ impl Matrix {
         }
     }
 
+    // REVIEW: this seems broken
     pub fn get_at(&self, indices: Vec<usize>) -> Option<&Ratio> {
         if indices.len() != self.shape.len() {
             return None;
