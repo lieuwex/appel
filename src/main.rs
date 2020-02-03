@@ -29,7 +29,13 @@ impl State {
             Ok(l) => l,
         };
 
-        let parsed = match parser::parse(&line) {
+        let (line, silent) = if line.starts_with('#') {
+            (&line[1..], true)
+        } else {
+            (line.as_str(), false)
+        };
+
+        let parsed = match parser::parse(line) {
             Err(e) => return Err(format!("error while parsing: {}", e)),
             Ok(None) => return Ok(String::new()),
             Ok(Some(s)) => s,
@@ -37,7 +43,7 @@ impl State {
 
         println!("parsed as: {:?}", parsed);
 
-        match self.exec.execute(parsed, true) {
+        let res = match self.exec.execute(parsed, true) {
             Err(e) => Err(format!("error while executing: {}", e)),
             Ok(ExecutorResult::None) => Ok(String::new()),
             Ok(ExecutorResult::Value(res)) => Ok(format_res(res, self.formatter)),
@@ -60,7 +66,8 @@ impl State {
                 };
                 Ok(String::new())
             }
-        }
+        };
+        res.map(|x| if silent { String::new() } else { x })
     }
 }
 
