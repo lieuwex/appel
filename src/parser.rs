@@ -42,11 +42,15 @@ fn comp_op<'a>() -> Parser<'a, CompOp> {
 }
 
 fn binary_op<'a>() -> Parser<'a, BinOp> {
-    operator("skip").map(|_| BinOp::Skip)
-        | operator("rho").map(|_| BinOp::Rho)
-        | operator("unpack").map(|_| BinOp::Unpack)
-        | operator("pack").map(|_| BinOp::Pack)
-        | operator("log").map(|_| BinOp::Log)
+    symbol_both(operator("skip")).map(|_| BinOp::Skip)
+        | symbol_both(operator("rho")).map(|_| BinOp::Rho)
+        | symbol_both(operator("unpack")).map(|_| BinOp::Unpack)
+        | symbol_both(operator("pack")).map(|_| BinOp::Pack)
+        | symbol_both(operator("log")).map(|_| BinOp::Log)
+        | symbol_both(operator(",")).map(|_| BinOp::Concat)
+        | symbol_both(operator("in")).map(|_| BinOp::In)
+        | symbol_both(operator("max")).map(|_| BinOp::Max)
+        | symbol_both(operator("min")).map(|_| BinOp::Min)
         | operator("**").map(|_| BinOp::Pow)
         | operator("*").map(|_| BinOp::Mul)
         | operator("/").map(|_| BinOp::Div)
