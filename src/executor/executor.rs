@@ -279,6 +279,9 @@ fn call_binary(op: BinOp, a: Matrix, b: Matrix) -> Result<ExecutorResult, String
             }
             .into())
         }
+
+        BinOp::Max => apply_ok!(|a: &Ratio, b: &Ratio| if b > a { b.clone() } else { a.clone() }),
+        BinOp::Min => apply_ok!(|a: &Ratio, b: &Ratio| if b < a { b.clone() } else { a.clone() }),
     }
 }
 

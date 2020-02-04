@@ -92,6 +92,8 @@ pub enum BinOp {
     Unpack,
     Pack,
     In,
+    Max,
+    Min,
 }
 
 impl fmt::Display for BinOp {
@@ -113,6 +115,8 @@ impl fmt::Display for BinOp {
             BinOp::Unpack => write!(f, "unpack"),
             BinOp::Pack => write!(f, "pack"),
             BinOp::In => write!(f, "in"),
+            BinOp::Max => write!(f, "max"),
+            BinOp::Min => write!(f, "min"),
         }
     }
 }
