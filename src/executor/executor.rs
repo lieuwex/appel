@@ -294,8 +294,8 @@ fn call_binary(op: BinOp, a: Matrix, b: Matrix) -> Result<ExecutorResult, String
             let number = it.next().unwrap();
 
             let (amount, at_start) = match amount.sign() {
-                Sign::Minus => (amount.neg(), true),
-                _ => (amount, false),
+                Sign::Minus => (amount.neg(), false),
+                _ => (amount, true),
             };
             let mut values: Vec<_> = b.values;
             let mut to_add = vec![number; amount.to_usize().unwrap()];
