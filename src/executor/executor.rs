@@ -190,10 +190,25 @@ fn call_binary(op: BinOp, a: Matrix, b: Matrix) -> Result<ExecutorResult, String
 
         BinOp::Skip => {
             let scalar = expect_scalar(ExecutorResult::Value(Value::Matrix(a)))?;
-            let n = to_usize_error(&scalar)?;
+            let n = scalar.to_integer();
+
+            let (n, at_start) = match n.sign() {
+                Sign::Minus => (n.neg(), false),
+                _ => (n, true),
+            };
+            let n = n
+                .to_usize()
+                .ok_or_else(|| "value too large for usize".to_owned())?;
+
+            let values = if at_start {
+                b.values.into_iter().skip(n).collect()
+            } else {
+                let amount = b.values.len() - n;
+                b.values.into_iter().take(amount).collect()
+            };
 
             Ok(Matrix {
-                values: b.values.into_iter().skip(n).collect(),
+                values,
                 shape: b.shape,
             }
             .into())
