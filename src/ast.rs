@@ -94,6 +94,7 @@ pub enum BinOp {
     In,
     Max,
     Min,
+    Pad,
 }
 
 impl fmt::Display for BinOp {
@@ -117,6 +118,7 @@ impl fmt::Display for BinOp {
             BinOp::In => write!(f, "in"),
             BinOp::Max => write!(f, "max"),
             BinOp::Min => write!(f, "min"),
+            BinOp::Pad => write!(f, "pad"),
         }
     }
 }

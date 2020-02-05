@@ -51,6 +51,7 @@ fn binary_op<'a>() -> Parser<'a, BinOp> {
         | symbol_both(operator("in")).map(|_| BinOp::In)
         | symbol_both(operator("max")).map(|_| BinOp::Max)
         | symbol_both(operator("min")).map(|_| BinOp::Min)
+        | symbol_both(operator("pad")).map(|_| BinOp::Pad)
         | operator("**").map(|_| BinOp::Pow)
         | operator("*").map(|_| BinOp::Mul)
         | operator("/").map(|_| BinOp::Div)
@@ -62,7 +63,7 @@ fn binary_op<'a>() -> Parser<'a, BinOp> {
 
 fn check_reserved(s: String) -> Result<String, String> {
     let reserved = vec![
-        "skip", "rho", "unpack", "pack", "log", "iota", "abs", "rev", "in", "max", "min",
+        "skip", "rho", "unpack", "pack", "log", "iota", "abs", "rev", "in", "max", "min", "pad",
     ];
 
     if reserved.contains(&s.as_str()) {
@@ -348,7 +349,8 @@ fn p_expr_9<'a>() -> Parser<'a, Expr> {
         | symbol_both(operator(",")).map(|_| BinOp::Concat)
         | symbol_both(operator("in")).map(|_| BinOp::In)
         | symbol_both(operator("max")).map(|_| BinOp::Max)
-        | symbol_both(operator("min")).map(|_| BinOp::Min);
+        | symbol_both(operator("min")).map(|_| BinOp::Min)
+        | symbol_both(operator("pad")).map(|_| BinOp::Pad);
 
     right_recurse(p_expr_8, op_bin, "special binary", |e1, op, e2| {
         Expr::Binary(Box::new(e1), op, Box::new(e2))

@@ -282,6 +282,36 @@ fn call_binary(op: BinOp, a: Matrix, b: Matrix) -> Result<ExecutorResult, String
 
         BinOp::Max => apply_ok!(|a: &Ratio, b: &Ratio| if b > a { b.clone() } else { a.clone() }),
         BinOp::Min => apply_ok!(|a: &Ratio, b: &Ratio| if b < a { b.clone() } else { a.clone() }),
+
+        BinOp::Pad => {
+            let a = expect_vector(ExecutorResult::Value(Value::Matrix(a)))?;
+            if a.len() != 2 {
+                return Err(format!("expected 2 arguments on the left, got {}", a.len()));
+            }
+
+            let mut it = a.into_iter();
+            let amount = it.next().unwrap().to_integer();
+            let number = it.next().unwrap();
+
+            let (amount, at_start) = match amount.sign() {
+                Sign::Minus => (amount.neg(), true),
+                _ => (amount, false),
+            };
+            let mut values: Vec<_> = b.values;
+            let mut to_add = vec![number; amount.to_usize().unwrap()];
+            if at_start {
+                to_add.append(&mut values);
+                values = to_add;
+            } else {
+                values.append(&mut to_add);
+            }
+
+            Ok(Matrix {
+                values,
+                shape: b.shape,
+            }
+            .into())
+        }
     }
 }
 
