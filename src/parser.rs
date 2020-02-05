@@ -42,7 +42,7 @@ fn comp_op<'a>() -> Parser<'a, CompOp> {
 }
 
 fn binary_op<'a>() -> Parser<'a, BinOp> {
-    symbol_both(operator("skip")).map(|_| BinOp::Skip)
+    symbol_both(operator("drop")).map(|_| BinOp::Drop)
         | symbol_both(operator("rho")).map(|_| BinOp::Rho)
         | symbol_both(operator("unpack")).map(|_| BinOp::Unpack)
         | symbol_both(operator("pack")).map(|_| BinOp::Pack)
@@ -63,7 +63,7 @@ fn binary_op<'a>() -> Parser<'a, BinOp> {
 
 fn check_reserved(s: String) -> Result<String, String> {
     let reserved = vec![
-        "skip", "rho", "unpack", "pack", "log", "iota", "abs", "rev", "in", "max", "min", "pad",
+        "drop", "rho", "unpack", "pack", "log", "iota", "abs", "rev", "in", "max", "min", "pad",
     ];
 
     if reserved.contains(&s.as_str()) {
@@ -341,7 +341,7 @@ fn p_expr_8<'a>() -> Parser<'a, Expr> {
 }
 
 fn p_expr_9<'a>() -> Parser<'a, Expr> {
-    let op_bin = symbol_both(operator("skip")).map(|_| BinOp::Skip)
+    let op_bin = symbol_both(operator("drop")).map(|_| BinOp::Drop)
         | symbol_both(operator("rho")).map(|_| BinOp::Rho)
         | symbol_both(operator("unpack")).map(|_| BinOp::Unpack)
         | symbol_both(operator("pack")).map(|_| BinOp::Pack)

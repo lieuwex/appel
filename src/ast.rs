@@ -87,7 +87,7 @@ pub enum BinOp {
     CompOp(CompOp),
 
     Log,
-    Skip,
+    Drop,
     Rho,
     Unpack,
     Pack,
@@ -111,7 +111,7 @@ impl fmt::Display for BinOp {
             BinOp::CompOp(x) => write!(f, "{}", x),
 
             BinOp::Log => write!(f, "log"),
-            BinOp::Skip => write!(f, "skip"),
+            BinOp::Drop => write!(f, "drop"),
             BinOp::Rho => write!(f, "rho"),
             BinOp::Unpack => write!(f, "unpack"),
             BinOp::Pack => write!(f, "pack"),

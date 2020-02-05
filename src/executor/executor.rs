@@ -188,7 +188,7 @@ fn call_binary(op: BinOp, a: Matrix, b: Matrix) -> Result<ExecutorResult, String
             .into())
         }
 
-        BinOp::Skip => {
+        BinOp::Drop => {
             let scalar = expect_scalar(ExecutorResult::Value(Value::Matrix(a)))?;
             let n = scalar.to_integer();
 
