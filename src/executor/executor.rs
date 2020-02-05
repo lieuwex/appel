@@ -437,7 +437,7 @@ impl Executor {
             UnOp::Iota => {
                 let s = expect_scalar(res)?;
                 let upper = to_usize_error(&s)?;
-                let values: Vec<_> = (0..upper).filter_map(Ratio::from_usize).collect();
+                let values: Vec<_> = (1..=upper).filter_map(Ratio::from_usize).collect();
                 Ok(Matrix::make_vector(values).into())
             }
 
