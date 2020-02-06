@@ -2,7 +2,10 @@ mod ast;
 mod executor;
 mod parser;
 
+use std::fs;
 use std::io::BufRead;
+
+use clap::{App, Arg};
 
 use crate::executor::matrix::Formatter;
 use crate::executor::{Executor, ExecutorResult, Value};
@@ -20,19 +23,11 @@ struct State {
 }
 
 impl State {
-    fn exec_line(&mut self, line: std::io::Result<String>) -> Result<String, String> {
-        let line = match line {
-            Err(e) => {
-                eprintln!("error reading from stdin: {}", e);
-                std::process::exit(1);
-            }
-            Ok(l) => l,
-        };
-
+    fn exec_line(&mut self, line: &str) -> Result<String, String> {
         let (line, silent) = if line.starts_with('#') {
             (&line[1..], true)
         } else {
-            (line.as_str(), false)
+            (line, false)
         };
 
         let parsed = match parser::parse(line) {
@@ -41,7 +36,9 @@ impl State {
             Ok(Some(s)) => s,
         };
 
-        println!("parsed as: {:?}", parsed);
+        if cfg!(debug_assertions) {
+            println!("parsed as: {:?}", parsed);
+        }
 
         let res = match self.exec.execute(parsed, true) {
             Err(e) => Err(format!("error while executing: {}", e)),
@@ -71,14 +68,66 @@ impl State {
     }
 }
 
-fn main() {
+fn main() -> Result<(), String> {
+    let matches = App::new("Appel")
+        .version("alpha-1")
+        .author("Lieuwe Rooijakkers <lieuwerooijakkers@gmail.com>")
+        .about("A sane arbitrary precision rational calculator inspired by APL")
+        .arg(
+            Arg::with_name("format")
+                .short("f")
+                .long("format")
+                .value_name("FORMAT")
+                .help("Set the number output format"),
+        )
+        .arg(
+            Arg::with_name("pre-exec")
+                .long("pre")
+                .value_name("PRE_EXEC")
+                .help("A script to execute before showing prompt, all output except for errors are ignored. Useful for a custom prelude."),
+        )
+        .get_matches();
+
+    let format = matches.value_of("format").unwrap_or("ratio");
+    let formatter = match format {
+        "rat" | "ratio" => Ok(Formatter::Ratio),
+        s => s.parse::<usize>().map(Formatter::Float),
+    }
+    .map_err(|e| e.to_string())?;
+
+    let scripts: Vec<(&str, String)> = matches
+        .values_of("pre-exec")
+        .unwrap_or_default()
+        .map(|fname| fs::read_to_string(fname).map(|s| (fname, s)))
+        .collect::<Result<_, _>>()
+        .map_err(|e| e.to_string())?;
+
     let mut state = State {
         exec: Executor::new(),
-        formatter: Formatter::Ratio,
+        formatter,
     };
 
+    for (fname, script) in scripts.into_iter() {
+        for (i, line) in script.lines().enumerate() {
+            match state.exec_line(line) {
+                Err(e) => eprintln!(
+                    "error while executing script {} line {}: {}\n",
+                    fname,
+                    i + 1,
+                    e
+                ),
+                Ok(_) => {}
+            }
+        }
+    }
+
     for line in std::io::stdin().lock().lines() {
-        match state.exec_line(line) {
+        let line = match line {
+            Err(e) => return Err(format!("error reading from stdin: {}", e)),
+            Ok(l) => l,
+        };
+
+        match state.exec_line(&line) {
             Err(e) => eprintln!("{}\n", e),
             Ok(r) => {
                 if r.is_empty() {
@@ -89,4 +138,6 @@ fn main() {
             }
         }
     }
+
+    Ok(())
 }
