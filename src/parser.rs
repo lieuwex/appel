@@ -6,12 +6,13 @@ use pom::{self, parser::*};
 type Parser<'a, T> = pom::parser::Parser<'a, char, T>;
 
 fn left_recurse<'a, E: 'a, O: 'a>(
-    atom_p: impl Fn() -> Parser<'a, E>,
+    atom_l_p: impl Fn() -> Parser<'a, E>,
     op_p: Parser<'a, O>,
+    atom_r_p: impl Fn() -> Parser<'a, E> + 'a,
     name: &'a str,
     combine: impl Fn(E, O, E) -> E + 'a,
 ) -> Parser<'a, E> {
-    (atom_p() + (op_p + atom_p()).repeat(0..))
+    (atom_l_p() + (op_p + call(atom_r_p)).repeat(0..))
         .map(move |(expr, v)| {
             v.into_iter()
                 .fold(expr, |acc, (op, expr2)| combine(acc, op, expr2))
@@ -19,12 +20,13 @@ fn left_recurse<'a, E: 'a, O: 'a>(
         .name(name)
 }
 fn right_recurse<'a, O: 'a>(
-    atom_p: impl Fn() -> Parser<'a, Expr>,
+    atom_l_p: impl Fn() -> Parser<'a, Expr>,
     op_p: Parser<'a, O>,
+    atom_r_p: impl Fn() -> Parser<'a, Expr> + 'a,
     name: &'a str,
     combine: impl Fn(Expr, O, Expr) -> Expr + 'a,
 ) -> Parser<'a, Expr> {
-    (atom_p() + (op_p + call(p_expr)).opt())
+    (atom_l_p() + (op_p + call(atom_r_p)).opt())
         .map(move |(a, b)| match b {
             None => a,
             Some((op, b)) => combine(a, op, b),
@@ -289,40 +291,13 @@ fn p_expr_4<'a>() -> Parser<'a, Expr> {
     left_recurse(
         p_expr_3,
         symbol_both(comp_op()),
+        p_expr_3,
         "binary comparison",
         |e1, op, e2| Expr::Binary(Box::new(e1), BinOp::CompOp(op), Box::new(e2)),
     )
 }
 
-/// Power (**) of unary'd vector
 fn p_expr_5<'a>() -> Parser<'a, Expr> {
-    let op_p = symbol_both(operator("**")).map(|_| BinOp::Pow);
-    right_recurse(p_expr_4, op_p, "power", |e1, op, e2| {
-        Expr::Binary(Box::new(e1), op, Box::new(e2))
-    })
-}
-
-/// Product (*, /, %) of powers
-fn p_expr_6<'a>() -> Parser<'a, Expr> {
-    let op_p = symbol_both(operator("*")).map(|_| BinOp::Mul)
-        | symbol_both(operator("/")).map(|_| BinOp::Div)
-        | symbol_both(operator("%")).map(|_| BinOp::Mod);
-    left_recurse(p_expr_5, op_p, "product", |e1, op, e2| {
-        Expr::Binary(Box::new(e1), op, Box::new(e2))
-    })
-}
-
-/// Sum (+, -) of products
-fn p_expr_7<'a>() -> Parser<'a, Expr> {
-    let op_p =
-        symbol_both(sym('+')).map(|_| BinOp::Add) | symbol_both(sym('-')).map(|_| BinOp::Sub);
-
-    left_recurse(p_expr_6, op_p, "sum", |e1, op, e2| {
-        Expr::Binary(Box::new(e1), op, Box::new(e2))
-    })
-}
-
-fn p_expr_8<'a>() -> Parser<'a, Expr> {
     let op_un = symbol_both(operator("iota")).map(|_| UnOp::Iota)
         | symbol_both(operator("abs")).map(|_| UnOp::Abs)
         | symbol_both(operator("rho")).map(|_| UnOp::Rho)
@@ -331,13 +306,41 @@ fn p_expr_8<'a>() -> Parser<'a, Expr> {
         | symbol_both(operator("down")).map(|_| UnOp::Down)
         | symbol_both(operator("sgn")).map(|_| UnOp::Sign);
 
-    (op_un.repeat(0..) + call(p_expr_7))
+    (op_un.repeat(0..) + call(p_expr_4))
         .map(|(ops, ex)| {
             ops.into_iter()
                 .rev()
                 .fold(ex, |acc, op| Expr::Unary(op, Box::new(acc)))
         })
         .name("special unary")
+}
+
+/// Power (**) of unary'd vector
+fn p_expr_6<'a>() -> Parser<'a, Expr> {
+    let op_p = symbol_both(operator("**")).map(|_| BinOp::Pow);
+    right_recurse(p_expr_5, op_p, p_expr_6, "power", |e1, op, e2| {
+        Expr::Binary(Box::new(e1), op, Box::new(e2))
+    })
+}
+
+/// Product (*, /, %) of powers
+fn p_expr_7<'a>() -> Parser<'a, Expr> {
+    let op_p = symbol_both(operator("*")).map(|_| BinOp::Mul)
+        | symbol_both(operator("/")).map(|_| BinOp::Div)
+        | symbol_both(operator("%")).map(|_| BinOp::Mod);
+    left_recurse(p_expr_6, op_p, p_expr_6, "product", |e1, op, e2| {
+        Expr::Binary(Box::new(e1), op, Box::new(e2))
+    })
+}
+
+/// Sum (+, -) of products
+fn p_expr_8<'a>() -> Parser<'a, Expr> {
+    let op_p =
+        symbol_both(sym('+')).map(|_| BinOp::Add) | symbol_both(sym('-')).map(|_| BinOp::Sub);
+
+    left_recurse(p_expr_7, op_p, p_expr_7, "sum", |e1, op, e2| {
+        Expr::Binary(Box::new(e1), op, Box::new(e2))
+    })
 }
 
 fn p_expr_9<'a>() -> Parser<'a, Expr> {
@@ -352,9 +355,13 @@ fn p_expr_9<'a>() -> Parser<'a, Expr> {
         | symbol_both(operator("min")).map(|_| BinOp::Min)
         | symbol_both(operator("pad")).map(|_| BinOp::Pad);
 
-    right_recurse(p_expr_8, op_bin, "special binary", |e1, op, e2| {
-        Expr::Binary(Box::new(e1), op, Box::new(e2))
-    })
+    right_recurse(
+        p_expr_8,
+        op_bin,
+        p_expr_8,
+        "special binary",
+        |e1, op, e2| Expr::Binary(Box::new(e1), op, Box::new(e2)),
+    )
 }
 
 /// Scan
