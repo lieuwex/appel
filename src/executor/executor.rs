@@ -22,7 +22,12 @@ pub fn to_f64(val: &Ratio) -> Option<f64> {
     let (num, den) = (val.numer(), val.denom());
     let fnum = num.to_f64()?;
     let fden = den.to_f64()?;
-    Some(fnum / fden)
+
+    if fden == 0.0 {
+        None
+    } else {
+        Some(fnum / fden)
+    }
 }
 fn pow(a: &Ratio, b: &Ratio) -> Option<Ratio> {
     if a.is_integer() && b.is_integer() {
