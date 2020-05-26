@@ -10,14 +10,22 @@ use tabwriter::{Alignment, TabWriter};
 
 #[derive(Clone, Copy)]
 pub enum Formatter {
-    Float(usize), // precision
+    Float(Option<usize>), // precision
     Ratio,
 }
 
 impl Formatter {
     fn apply(self, rat: &Ratio) -> String {
         match self {
-            Formatter::Float(precision) => {
+            Formatter::Float(None) => match to_f64(rat) {
+                None => format!("{}", rat),
+                Some(f) => {
+                    let mut buf: Vec<u8> = vec![];
+                    dtoa::write(&mut buf, f).unwrap();
+                    String::from_utf8(buf).unwrap()
+                }
+            },
+            Formatter::Float(Some(precision)) => {
                 if rat.is_integer() {
                     return format!("{}", rat);
                 }

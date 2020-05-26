@@ -50,12 +50,13 @@ impl State {
                     "f" | "format" => {
                         self.formatter = match val.to_ascii_lowercase().as_str() {
                             "rat" | "ratio" => Formatter::Ratio,
+                            "f" | "float" => Formatter::Float(None),
                             n => {
                                 let precision = n
                                     .trim()
                                     .parse::<usize>()
                                     .or_else(|_| Err("conversion error".to_owned()))?;
-                                Formatter::Float(precision)
+                                Formatter::Float(Some(precision))
                             }
                         };
                     }
@@ -91,7 +92,8 @@ fn main() -> Result<(), String> {
     let format = matches.value_of("format").unwrap_or("ratio");
     let formatter = match format {
         "rat" | "ratio" => Ok(Formatter::Ratio),
-        s => s.parse::<usize>().map(Formatter::Float),
+        "f" | "float" => Ok(Formatter::Float(None)),
+        s => s.parse::<usize>().map(|n| Formatter::Float(Some(n))),
     }
     .map_err(|e| e.to_string())?;
 
