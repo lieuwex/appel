@@ -753,9 +753,15 @@ impl Executor {
                 }
 
                 "s" | "set" => {
-                    let mut it = body.splitn(2, ' ').map(|x| x.to_owned());
-                    let key = it.next().unwrap();
-                    let value = it.next().unwrap();
+                    let mut it: Vec<String> = body.splitn(2, ' ').map(|x| x.to_owned()).collect();
+                    if it.len() != 2 {
+                        return Err(format!(
+                            "expected key and value, got {} items instead",
+                            it.len()
+                        ));
+                    }
+                    let key = it.pop().unwrap();
+                    let value = it.pop().unwrap();
                     Ok(ExecutorResult::Setting(key, value))
                 }
 
