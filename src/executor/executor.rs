@@ -332,6 +332,8 @@ fn call_binary(op: BinOp, a: Matrix, b: Matrix) -> Result<ExecutorResult, String
             }
             .into())
         }
+
+        BinOp::Map => unreachable!(),
     }
 }
 
@@ -595,6 +597,22 @@ impl Executor {
         }
     }
 
+    fn execute_map(&mut self, a: Expr, b: Expr) -> Result<ExecutorResult, String> {
+        let f = match self.execute_expr(a)?.unwrap_value() {
+            Value::Function(f) => f,
+            _ => return Err(String::from("expected left hand to be a function")),
+        };
+        let mut x = Matrix::try_from(self.execute_expr(b)?)?;
+
+        for value in &mut x.values {
+            let res = self.call_function(f.clone(), vec![Matrix::from(value.clone())])?;
+            let m = Matrix::try_from(res)?;
+            *value = m.scalar().unwrap().clone();
+        }
+
+        Ok(ExecutorResult::from(x))
+    }
+
     fn execute_expr(&mut self, node: Expr) -> Result<ExecutorResult, String> {
         match node {
             Expr::Atom(Atom::Rat(v)) => Ok(Matrix::from(v).into()),
@@ -646,6 +664,7 @@ impl Executor {
             }
 
             Expr::Unary(op, expr) => self.execute_unary(op, *expr),
+            Expr::Binary(a, BinOp::Map, b) => self.execute_map(*a, *b),
             Expr::Binary(a, op, b) => self.execute_binary(op, *a, *b),
             Expr::Fold(op, expr) => self.execute_fold_scan(op, *expr, true),
             Expr::Scan(op, expr) => self.execute_fold_scan(op, *expr, false),

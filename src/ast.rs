@@ -82,6 +82,7 @@ pub enum BinOp {
     Div,
     Mod,
     Pow,
+    Map,
     Concat,
 
     CompOp(CompOp),
@@ -106,6 +107,7 @@ impl fmt::Display for BinOp {
             BinOp::Div => write!(f, "/"),
             BinOp::Mod => write!(f, "%"),
             BinOp::Pow => write!(f, "**"),
+            BinOp::Map => write!(f, "."),
             BinOp::Concat => write!(f, ","),
 
             BinOp::CompOp(x) => write!(f, "{}", x),
