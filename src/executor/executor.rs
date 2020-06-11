@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::convert::TryFrom;
 use std::ops::Neg;
 
@@ -772,15 +772,16 @@ impl Executor {
                 }
 
                 "s" | "set" => {
-                    let mut it: Vec<String> = body.splitn(2, ' ').map(|x| x.to_owned()).collect();
+                    let mut it: VecDeque<String> =
+                        body.splitn(2, ' ').map(|x| x.to_owned()).collect();
                     if it.len() != 2 {
                         return Err(format!(
                             "expected key and value, got {} items instead",
                             it.len()
                         ));
                     }
-                    let key = it.pop().unwrap();
-                    let value = it.pop().unwrap();
+                    let key = it.pop_front().unwrap();
+                    let value = it.pop_front().unwrap();
                     Ok(ExecutorResult::Setting(key, value))
                 }
 
