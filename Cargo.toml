@@ -6,10 +6,11 @@ edition = "2018"
 
 [dependencies]
 pom = "^3.1"
-num-bigint = ""
-num-rational = "^0.2.3"
-num-traits = "^0.2.11"  # Note: synchronised with the num-bigint dependency
+rand = "0.7"
 tabwriter = "1.2.1"
-rand = "0.7.3"
 clap = "2.33.0"
 dtoa = "0.4"
+
+num-bigint = { version = "0.3", features = ["rand"] }
+num-rational = "0.3"
+num-traits = "0.2.12"  # Note: synchronised with the num-bigint dependency

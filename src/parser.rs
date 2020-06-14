@@ -198,7 +198,7 @@ fn p_float<'a>() -> Parser<'a, Atom> {
 
     let p_ratio = p.convert(|((pre, post), exp)| {
         let ten = BigUint::from(10u32);
-        let comma_exp = ten.pow(post.len());
+        let comma_exp = ten.clone().pow(post.len());
         let base_num = integer_decimal(&pre)? * &comma_exp + integer_decimal(&post)?;
         let base_rat = Ratio::from((BigInt::from(base_num), BigInt::from(comma_exp)));
         Ok(match exp.to_biguint() {
