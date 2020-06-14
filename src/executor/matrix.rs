@@ -16,6 +16,10 @@ pub enum Formatter {
 
 impl Formatter {
     fn apply(self, rat: &Ratio) -> String {
+        if rat.is_integer() {
+            return format!("{}", rat);
+        }
+
         match self {
             Formatter::Float(None) => match to_f64(rat) {
                 None => format!("{}", rat),
@@ -25,16 +29,10 @@ impl Formatter {
                     String::from_utf8(buf).unwrap()
                 }
             },
-            Formatter::Float(Some(precision)) => {
-                if rat.is_integer() {
-                    return format!("{}", rat);
-                }
-
-                match to_f64(rat) {
-                    None => format!("{}", rat),
-                    Some(f) => format!("{1:.0$}", precision, f),
-                }
-            }
+            Formatter::Float(Some(precision)) => match to_f64(rat) {
+                None => format!("{}", rat),
+                Some(f) => format!("{1:.0$}", precision, f),
+            },
             Formatter::Ratio => format!("{}", rat),
         }
     }
