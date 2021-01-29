@@ -181,7 +181,7 @@ fn call_binary(op: BinOp, a: Matrix, b: Matrix) -> Result<ExecutorResult, String
         BinOp::CompOp(x) => apply_ok!(get_comp_op_fn(x)),
 
         BinOp::Concat => {
-            if a.shape != b.shape {
+            if a.shape.len() != b.shape.len() {
                 return Err(String::from("rank mismatch"));
             }
 
