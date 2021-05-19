@@ -426,7 +426,7 @@ impl Executor {
                     .to_integer()
                     .to_u64()
                     .ok_or_else(|| "value too large to be rolled".to_owned())?;
-                let val: u64 = rng.gen_range(0, upper);
+                let val: u64 = rng.gen_range(0..=upper);
                 Ratio::from_u64(val).ok_or_else(|| "couldn't convert u64 to ratio".to_owned())
             }),
             UnOp::RollFloat => for_all!(&|x: Ratio| {
@@ -435,7 +435,7 @@ impl Executor {
                 }
 
                 let mut rng = rand::thread_rng();
-                let val: f64 = rng.gen_range(0.0, 1.0);
+                let val: f64 = rng.gen_range(0.0..=1.0);
                 Ratio::from_f64(val)
                     .map(|val| x * val)
                     .ok_or_else(|| "couldn't convert f64 to ratio".to_owned())
