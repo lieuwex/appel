@@ -128,18 +128,12 @@ fn call_binary(op: BinOp, a: Matrix, b: Matrix) -> Result<ExecutorResult, String
                 return Ok(matrix.into());
             }
 
-            if !a.is_scalar() && !b.is_scalar() {
-                return Err(String::from("rank mismatch"));
-            }
-
-            // Since:
-            //   !(!scalar(a) && !scalar(b)) => (scalar(a) || scalar(b))
-            //
-            // We can assume that the unwrap never fails.
-            let (scalar, non_scalar, scalar_is_left) = if a.is_scalar() {
-                (a.scalar().unwrap(), b, true)
+            let (scalar, non_scalar, scalar_is_left) = if let Some(s) = a.scalar() {
+                (s, b, true)
+            } else if let Some(s) = b.scalar() {
+                (s, a, false)
             } else {
-                (b.scalar().unwrap(), a, false)
+                return Err(String::from("rank mismatch"));
             };
 
             let matrix = Matrix {
