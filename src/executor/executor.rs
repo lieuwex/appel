@@ -232,10 +232,10 @@ fn call_binary(op: BinOp, a: Matrix, b: Matrix) -> Result<ExecutorResult, String
             let a = get_int(a)?;
             let b = get_int(b)?;
 
-            let radix = a.to_u32().unwrap_or(std::u32::MAX);
-            if radix < 2 {
-                return Err(String::from("radix must be greater than or equal to 2"));
-            }
+            let radix = a
+                .to_u32()
+                .and_then(|r| if 2 <= r && r <= 256 { Some(r) } else { None })
+                .ok_or(String::from("radix must be greater than or equal to 2"))?;
 
             let (sign, bits) = b.to_radix_be(radix);
 
@@ -257,6 +257,11 @@ fn call_binary(op: BinOp, a: Matrix, b: Matrix) -> Result<ExecutorResult, String
             let a = get_int(a)?;
             let b = expect_vector(matrix_to_res(b))?;
 
+            let radix = a
+                .to_u32()
+                .and_then(|r| if 2 <= r && r <= 256 { Some(r) } else { None })
+                .ok_or(String::from("radix must be greater than or equal to 2"))?;
+
             let sign = if b.iter().any(|b| b.to_integer().sign() == Sign::Minus) {
                 Sign::Minus
             } else {
@@ -265,7 +270,7 @@ fn call_binary(op: BinOp, a: Matrix, b: Matrix) -> Result<ExecutorResult, String
 
             let bits: Vec<u8> = b.iter().map(|b| b.to_integer().to_u8().unwrap()).collect();
 
-            let packed = BigInt::from_radix_be(sign, &bits, a.to_u32().unwrap_or(std::u32::MAX));
+            let packed = BigInt::from_radix_be(sign, &bits, radix);
             let int = match packed {
                 None => return Err(String::from("couldn't convert bits to int")),
                 Some(i) => i,
