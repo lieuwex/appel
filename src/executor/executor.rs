@@ -527,8 +527,8 @@ impl Executor {
         is_fold: bool,
     ) -> Result<ExecutorResult, String> {
         let matrix = Matrix::try_from(self.execute_expr(expr)?)?;
-        if matrix.values.len() < 2 {
-            return Err(String::from("matrix has to have at least 2 values"));
+        if matrix.values.len() < 1 {
+            return Err(String::from("matrix must have at least 1 value"));
         }
 
         macro_rules! apply {
