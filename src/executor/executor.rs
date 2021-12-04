@@ -606,7 +606,10 @@ impl Executor {
         for value in &mut x.values {
             let res = self.call_function(f.clone(), vec![Matrix::from(value.clone())])?;
             let m = Matrix::try_from(res)?;
-            *value = m.scalar().unwrap().clone();
+            *value = m
+                .scalar()
+                .ok_or(format!("Function returned non-scalar in map"))?
+                .clone();
         }
 
         Ok(ExecutorResult::from(x))
