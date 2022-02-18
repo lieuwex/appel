@@ -124,7 +124,7 @@ impl From<Ratio> for Matrix {
     fn from(rat: Ratio) -> Self {
         Self {
             values: vec![rat],
-            shape: vec![],
+            shape: vec![1],
         }
     }
 }
