@@ -338,6 +338,22 @@ impl Executor {
             variables: HashMap::new(),
         };
 
+        macro_rules! add_float {
+            ($name:expr, $f:expr) => {
+                res.variables.insert(
+                    String::from($name),
+                    Value::Matrix(Matrix::from({
+                        let mut r = Ratio::new();
+                        r.assign_f64($f).unwrap();
+                        r
+                    })),
+                );
+            };
+        }
+
+        add_float!("pi", f64::PI());
+        add_float!("e", f64::E());
+
         macro_rules! add_frac {
             ($name:expr, $a:expr, $b:expr) => {
                 res.variables.insert(
@@ -349,9 +365,6 @@ impl Executor {
                 );
             };
         }
-
-        add_frac!("pi", 2646693125139304345, 842468587426513207);
-        add_frac!("e", 28875761731, 10622799089);
 
         res
     }
