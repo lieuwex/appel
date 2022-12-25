@@ -1,6 +1,6 @@
 use std::collections::{HashMap, VecDeque};
 use std::convert::TryFrom;
-use std::ops::{Add, Neg};
+use std::ops::{Add, Deref, Neg};
 
 use crate::ast::*;
 use crate::parser;
@@ -356,7 +356,7 @@ impl Executor {
         res
     }
 
-    fn call_function(&self, f: Function, args: Vec<Matrix>) -> Result<ExecutorResult, String> {
+    fn call_function(&self, f: &Function, args: Vec<Matrix>) -> Result<ExecutorResult, String> {
         if args.len() != f.params.len() {
             return Err(format!(
                 "expected {} arguments got {}",
@@ -371,10 +371,10 @@ impl Executor {
                 .insert(param.to_string(), Value::Matrix(matrix));
         }
 
-        ctx.execute_expr(f.expr)
+        ctx.execute_expr(&f.expr)
     }
 
-    fn execute_unary(&mut self, op: UnOp, expr: Expr) -> Result<ExecutorResult, String> {
+    fn execute_unary(&mut self, op: UnOp, expr: &Expr) -> Result<ExecutorResult, String> {
         let res = self.execute_expr(expr)?;
 
         macro_rules! for_all {
@@ -509,7 +509,7 @@ impl Executor {
         }
     }
 
-    fn execute_binary(&mut self, op: BinOp, a: Expr, b: Expr) -> Result<ExecutorResult, String> {
+    fn execute_binary(&mut self, op: BinOp, a: &Expr, b: &Expr) -> Result<ExecutorResult, String> {
         // (a/b)^(c/d) = (\sqrt d {a^c}) / (\sqrt d {b ^c})
 
         let a = Matrix::try_from(self.execute_expr(a)?)?;
@@ -520,7 +520,7 @@ impl Executor {
     fn execute_fold_scan(
         &mut self,
         op: FoldOp,
-        expr: Expr,
+        expr: &Expr,
         is_fold: bool,
     ) -> Result<ExecutorResult, String> {
         let matrix = Matrix::try_from(self.execute_expr(expr)?)?;
@@ -584,7 +584,7 @@ impl Executor {
 
                         apply!(&|acc, item| {
                             let args = vec![acc, item];
-                            let m = Matrix::try_from(self.call_function(f.clone(), args)?)?;
+                            let m = Matrix::try_from(self.call_function(f, args)?)?;
                             Ok(ExecutorResult::Value(Value::Matrix(m)))
                         })
                     }
@@ -593,7 +593,7 @@ impl Executor {
         }
     }
 
-    fn execute_map(&mut self, a: Expr, b: Expr) -> Result<ExecutorResult, String> {
+    fn execute_map(&mut self, a: &Expr, b: &Expr) -> Result<ExecutorResult, String> {
         let f = match self.execute_expr(a)?.unwrap_value() {
             Value::Function(f) => f,
             _ => return Err(String::from("expected left hand to be a function")),
@@ -601,7 +601,7 @@ impl Executor {
         let mut x = Matrix::try_from(self.execute_expr(b)?)?;
 
         for value in &mut x.values {
-            let res = self.call_function(f.clone(), vec![Matrix::from(value.clone())])?;
+            let res = self.call_function(&f, vec![Matrix::from(value.clone())])?;
             let m = Matrix::try_from(res)?;
             *value = m
                 .into_scalar()
@@ -611,11 +611,11 @@ impl Executor {
         Ok(ExecutorResult::from(x))
     }
 
-    fn execute_expr(&mut self, node: Expr) -> Result<ExecutorResult, String> {
+    fn execute_expr(&mut self, node: &Expr) -> Result<ExecutorResult, String> {
         match node {
-            Expr::Atom(Atom::Rat(v)) => Ok(Matrix::from(v).into()),
+            Expr::Atom(Atom::Rat(v)) => Ok(Matrix::from(v.clone()).into()),
             Expr::Atom(Atom::Ref(s)) => {
-                let var = match self.variables.get(&s) {
+                let var = match self.variables.get(s) {
                     None => return Err(format!("variable {} not found", s)),
                     Some(var) => var.clone(),
                 };
@@ -639,7 +639,7 @@ impl Executor {
                             args.push(Matrix::try_from(ExecutorResult::Value(e))?);
                         }
 
-                        self.call_function(f, args)
+                        self.call_function(&f, args)
                     }
 
                     Value::Matrix(first) => {
@@ -660,20 +660,20 @@ impl Executor {
                 }
             }
 
-            Expr::Unary(op, expr) => self.execute_unary(op, *expr),
-            Expr::Binary(a, BinOp::Map, b) => self.execute_map(*a, *b),
-            Expr::Binary(a, op, b) => self.execute_binary(op, *a, *b),
-            Expr::Fold(op, expr) => self.execute_fold_scan(op, *expr, true),
-            Expr::Scan(op, expr) => self.execute_fold_scan(op, *expr, false),
+            Expr::Unary(op, expr) => self.execute_unary(*op, expr),
+            Expr::Binary(a, BinOp::Map, b) => self.execute_map(a, b),
+            Expr::Binary(a, op, b) => self.execute_binary(*op, a, b),
+            Expr::Fold(op, expr) => self.execute_fold_scan(op.clone(), expr, true),
+            Expr::Scan(op, expr) => self.execute_fold_scan(op.clone(), expr, false),
 
             Expr::Index(m, indices) => {
-                let indices = expect_vector(self.execute_expr(*indices)?)?;
+                let indices = expect_vector(self.execute_expr(indices)?)?;
 
                 if indices.iter().any(|i| !i.is_integer()) {
                     return Err(String::from("expected integers"));
                 }
 
-                let m = Matrix::try_from(self.execute_expr(*m)?)?;
+                let m = Matrix::try_from(self.execute_expr(m)?)?;
 
                 if indices.len() != m.shape.len() {
                     return Err(String::from("rank mismatch"));
@@ -714,11 +714,11 @@ impl Executor {
         }
 
         let res = match node {
-            Statement::Expr(e) => self.execute_expr(e),
+            Statement::Expr(e) => self.execute_expr(&e),
 
             Statement::Assign(var, val) => {
                 err_var_exists!(var, false);
-                let res = self.execute_expr(val)?;
+                let res = self.execute_expr(&val)?;
                 if let ExecutorResult::Value(val) = &res {
                     self.variables.insert(var, val.clone());
                 }
