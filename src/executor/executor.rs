@@ -26,22 +26,18 @@ pub fn to_f64(val: &Ratio) -> Option<f64> {
         Some(fnum / fden)
     }
 }
-pub fn float_to_rational(f: &Float) -> Ratio {
-    // TODO: approximate
-    f.to_rational().unwrap()
-}
 
 fn pow(a: Ratio, b: Ratio) -> Option<Ratio> {
     let b = b.to_i32()?;
     let res = a.pow(b);
     return Some(Ratio::from(res));
 }
-fn log(base: Ratio, n: Ratio) -> Ratio {
+fn log(base: Ratio, n: Ratio) -> Option<Ratio> {
     let base = Float::new(float::prec_max()).add(base);
     let n = Float::new(float::prec_max()).add(n);
 
     let res = n.log2() / base.log2();
-    float_to_rational(&res)
+    res.to_rational()
 }
 
 #[derive(Clone)]
@@ -151,7 +147,7 @@ fn call_binary(op: BinOp, a: Matrix, b: Matrix) -> Result<ExecutorResult, String
         BinOp::Pow => {
             apply!(|a, b| pow(a, b).ok_or_else(|| "error while converting to i32".to_owned()))
         }
-        BinOp::Log => apply_ok!(|a, b| log(a, b)),
+        BinOp::Log => apply!(|a, b| log(a, b).ok_or_else(|| "result is not finite".to_owned())),
         BinOp::CompOp(x) => apply_ok!(get_comp_op_fn(x)),
 
         BinOp::Concat => {
