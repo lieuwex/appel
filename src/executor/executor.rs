@@ -1,15 +1,12 @@
 use std::collections::{HashMap, VecDeque};
 use std::convert::TryFrom;
-use std::ops::Neg;
+use std::ops::{Add, Neg};
 
 use crate::ast::*;
 use crate::parser;
 
-use num_bigint::{BigInt, Sign};
-use num_traits::cast::{FromPrimitive, ToPrimitive};
-use num_traits::identities::{One, Zero};
-use num_traits::pow::Pow;
-use num_traits::sign::Signed;
+use num_traits::*;
+use rug::{float, Float, Integer, Rational};
 
 use rand::prelude::*;
 
@@ -20,8 +17,8 @@ use super::value::Value;
 
 pub fn to_f64(val: &Ratio) -> Option<f64> {
     let (num, den) = (val.numer(), val.denom());
-    let fnum = num.to_f64()?;
-    let fden = den.to_f64()?;
+    let fnum = num.to_f64();
+    let fden = den.to_f64();
 
     if fden == 0.0 {
         None
@@ -29,32 +26,22 @@ pub fn to_f64(val: &Ratio) -> Option<f64> {
         Some(fnum / fden)
     }
 }
-fn pow(a: &Ratio, b: &Ratio) -> Option<Ratio> {
-    if a.is_integer() && b.is_integer() {
-        let a = a.to_integer();
-        let b = b.to_integer();
-
-        let (b, is_neg) = match b.to_biguint() {
-            Some(b) => (Some(b), false),
-            None => (b.neg().to_biguint(), true),
-        };
-
-        if let Some(b) = b {
-            let res = if is_neg { 1 / a.pow(b) } else { a.pow(b) };
-            return Some(Ratio::from(res));
-        }
-    }
-
-    let a = to_f64(a)?;
-    let b = to_f64(b)?;
-    let res = a.powf(b);
-    Ratio::from_f64(res)
+pub fn float_to_rational(f: &Float) -> Ratio {
+    // TODO: approximate
+    f.to_rational().unwrap()
 }
-fn log(base: &Ratio, n: &Ratio) -> Option<Ratio> {
-    let base = to_f64(base)?;
-    let n = to_f64(n)?;
-    let res = n.log(base);
-    Ratio::from_f64(res)
+
+fn pow(a: Ratio, b: Ratio) -> Option<Ratio> {
+    let b = b.to_i32()?;
+    let res = a.pow(b);
+    return Some(Ratio::from(res));
+}
+fn log(base: Ratio, n: Ratio) -> Ratio {
+    let base = Float::new(float::prec_max()).add(base);
+    let n = Float::new(float::prec_max()).add(n);
+
+    let res = n.log2() / base.log2();
+    float_to_rational(&res)
 }
 
 #[derive(Clone)]
@@ -70,9 +57,9 @@ fn expect_vector(v: ExecutorResult) -> Result<Vec<Ratio>, String> {
     }
 }
 fn expect_scalar(v: ExecutorResult) -> Result<Ratio, String> {
-    match Matrix::try_from(v)?.scalar() {
+    match Matrix::try_from(v)?.into_scalar() {
         None => Err(String::from("expected scalar")),
-        Some(s) => Ok(s.clone()),
+        Some(s) => Ok(s),
     }
 }
 
@@ -86,8 +73,8 @@ fn to_usize_error(rat: &Ratio) -> Result<usize, String> {
     }
 }
 
-fn get_comp_op_fn(op: CompOp) -> impl Fn(&Ratio, &Ratio) -> Ratio {
-    let fun: &dyn Fn(&Ratio, &Ratio) -> bool = match op {
+fn get_comp_op_fn(op: CompOp) -> impl Fn(Ratio, Ratio) -> Ratio {
+    let fun: &dyn Fn(Ratio, Ratio) -> bool = match op {
         CompOp::Eq => &|a, b| a == b,
         CompOp::Neq => &|a, b| a != b,
         CompOp::Lt => &|a, b| a < b,
@@ -96,14 +83,14 @@ fn get_comp_op_fn(op: CompOp) -> impl Fn(&Ratio, &Ratio) -> Ratio {
         CompOp::Ge => &|a, b| a >= b,
     };
 
-    move |a: &Ratio, b: &Ratio| -> Ratio { Ratio::from_u8(fun(a, b) as u8).unwrap() }
+    move |a: Ratio, b: Ratio| -> Ratio { Ratio::from_u8(fun(a, b) as u8).unwrap() }
 }
 
 fn call_binary(op: BinOp, a: Matrix, b: Matrix) -> Result<ExecutorResult, String> {
-    let get_int = |m: Matrix| -> Result<BigInt, String> {
+    let get_int = |m: Matrix| -> Result<Integer, String> {
         let s = expect_scalar(ExecutorResult::Value(Value::Matrix(m)))?;
         if s.is_integer() {
-            Ok(s.to_integer())
+            Ok(s.into_integer())
         } else {
             Err(String::from("expected integer"))
         }
@@ -116,9 +103,9 @@ fn call_binary(op: BinOp, a: Matrix, b: Matrix) -> Result<ExecutorResult, String
             if a.shape == b.shape {
                 let values = a
                     .values
-                    .iter()
+                    .into_iter()
                     .zip(b.values)
-                    .map(|(a, b)| $f(a, &b))
+                    .map(|(a, b): (Rational, Rational)| $f(a, b).map(Ratio::from))
                     .collect::<Result<_, String>>()?;
 
                 let matrix = Matrix {
@@ -139,12 +126,12 @@ fn call_binary(op: BinOp, a: Matrix, b: Matrix) -> Result<ExecutorResult, String
             let matrix = Matrix {
                 values: non_scalar
                     .values
-                    .iter()
-                    .map(|v| {
+                    .into_iter()
+                    .map(|v: Rational| {
                         if scalar_is_left {
-                            $f(scalar, v)
+                            $f(scalar.clone(), v).map(Ratio::from)
                         } else {
-                            $f(v, scalar)
+                            $f(v, scalar.clone()).map(Ratio::from)
                         }
                     })
                     .collect::<Result<_, String>>()?,
@@ -165,13 +152,11 @@ fn call_binary(op: BinOp, a: Matrix, b: Matrix) -> Result<ExecutorResult, String
         BinOp::Sub => apply_ok!(|a, b| a - b),
         BinOp::Mul => apply_ok!(|a, b| a * b),
         BinOp::Div => apply_ok!(|a, b| a / b),
-        BinOp::Mod => apply_ok!(|a, b| a % b),
+        BinOp::Mod => todo!(),
         BinOp::Pow => {
-            apply!(|a, b| pow(a, b).ok_or_else(|| "error while converting to float".to_owned()))
+            apply!(|a, b| pow(a, b).ok_or_else(|| "error while converting to i32".to_owned()))
         }
-        BinOp::Log => {
-            apply!(|a, b| log(a, b).ok_or_else(|| "error while converting to float".to_owned()))
-        }
+        BinOp::Log => apply_ok!(|a, b| log(a, b)),
         BinOp::CompOp(x) => apply_ok!(get_comp_op_fn(x)),
 
         BinOp::Concat => {
@@ -189,11 +174,12 @@ fn call_binary(op: BinOp, a: Matrix, b: Matrix) -> Result<ExecutorResult, String
 
         BinOp::Drop => {
             let scalar = expect_scalar(ExecutorResult::Value(Value::Matrix(a)))?;
-            let n = scalar.to_integer();
+            let n = scalar.into_integer();
 
-            let (n, at_start) = match n.sign() {
-                Sign::Minus => (n.neg(), false),
-                _ => (n, true),
+            let (n, at_start) = if (&n).signum() == -1 {
+                (n.neg().into(), false)
+            } else {
+                (n, true)
             };
             let n = n
                 .to_usize()
@@ -229,6 +215,9 @@ fn call_binary(op: BinOp, a: Matrix, b: Matrix) -> Result<ExecutorResult, String
         }
 
         BinOp::Unpack => {
+            todo!()
+
+            /*
             let a = get_int(a)?;
             let b = get_int(b)?;
 
@@ -252,8 +241,12 @@ fn call_binary(op: BinOp, a: Matrix, b: Matrix) -> Result<ExecutorResult, String
                 .collect();
 
             Ok(Matrix::make_vector(values).into())
+            */
         }
         BinOp::Pack => {
+            todo!()
+
+            /*
             let a = get_int(a)?;
             let b = expect_vector(matrix_to_res(b))?;
 
@@ -276,6 +269,7 @@ fn call_binary(op: BinOp, a: Matrix, b: Matrix) -> Result<ExecutorResult, String
                 Some(i) => i,
             };
             Ok(Matrix::from(Ratio::from_integer(int)).into())
+            */
         }
 
         BinOp::In => {
@@ -299,8 +293,8 @@ fn call_binary(op: BinOp, a: Matrix, b: Matrix) -> Result<ExecutorResult, String
             .into())
         }
 
-        BinOp::Max => apply_ok!(|a: &Ratio, b: &Ratio| if b > a { b.clone() } else { a.clone() }),
-        BinOp::Min => apply_ok!(|a: &Ratio, b: &Ratio| if b < a { b.clone() } else { a.clone() }),
+        BinOp::Max => apply_ok!(|a: Ratio, b: Ratio| if b > a { b } else { a }),
+        BinOp::Min => apply_ok!(|a: Ratio, b: Ratio| if b < a { b } else { a }),
 
         BinOp::Pad => {
             let a = expect_vector(ExecutorResult::Value(Value::Matrix(a)))?;
@@ -309,12 +303,13 @@ fn call_binary(op: BinOp, a: Matrix, b: Matrix) -> Result<ExecutorResult, String
             }
 
             let mut it = a.into_iter();
-            let amount = it.next().unwrap().to_integer();
+            let amount = it.next().unwrap().into_integer();
             let number = it.next().unwrap();
 
-            let (amount, at_start) = match amount.sign() {
-                Sign::Minus => (amount.neg(), false),
-                _ => (amount, true),
+            let (amount, at_start) = if (&amount).signum() == -1 {
+                (amount.neg(), false)
+            } else {
+                (amount, true)
             };
             let mut values: Vec<_> = b.values;
             let mut to_add = vec![number; amount.to_usize().unwrap()];
@@ -346,10 +341,10 @@ impl Executor {
             ($name:expr, $a:expr, $b:expr) => {
                 res.variables.insert(
                     String::from($name),
-                    Value::Matrix(Matrix::from(Ratio::new_raw(
-                        BigInt::from_usize($a).unwrap(),
-                        BigInt::from_usize($b).unwrap(),
-                    ))),
+                    Value::Matrix(Matrix::from(Ratio::from((
+                        Integer::from_usize($a).unwrap(),
+                        Integer::from_usize($b).unwrap(),
+                    )))),
                 );
             };
         }
@@ -607,9 +602,8 @@ impl Executor {
             let res = self.call_function(f.clone(), vec![Matrix::from(value.clone())])?;
             let m = Matrix::try_from(res)?;
             *value = m
-                .scalar()
+                .into_scalar()
                 .ok_or(format!("Function returned non-scalar in map"))?
-                .clone();
         }
 
         Ok(ExecutorResult::from(x))
@@ -651,16 +645,15 @@ impl Executor {
                             return Ok(first.into());
                         }
 
-                        let mut values = Vec::with_capacity(expressions.len());
-                        for e in expressions.into_iter() {
-                            let scalar = match Matrix::try_from(e)?.scalar() {
-                                None => return Err(String::from("nested matrices aren't allowed")),
-                                Some(s) => s.clone(),
-                            };
-                            values.push(scalar);
-                        }
+                        let values: Result<Vec<_>, String> = expressions
+                            .into_iter()
+                            .map(|e| match Matrix::try_from(e)?.into_scalar() {
+                                None => Err(String::from("nested matrices aren't allowed")),
+                                Some(s) => Ok(s),
+                            })
+                            .collect();
 
-                        Ok(Matrix::make_vector(values).into())
+                        Ok(Matrix::make_vector(values?).into())
                     }
                 }
             }

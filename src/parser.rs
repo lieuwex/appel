@@ -1,7 +1,9 @@
 use crate::ast::*;
-use num_bigint::{BigInt, BigUint};
-use num_traits::{One, Pow, Zero};
+
 use pom::{self, parser::*};
+
+use num_traits::*;
+use rug::{integer::ParseIntegerError, ops::Pow, rational::ParseRationalError, Integer, Rational};
 
 type Parser<'a, T> = pom::parser::Parser<'a, char, T>;
 
@@ -97,15 +99,15 @@ fn operator<'a>(text: &'static str) -> Parser<'a, ()> {
     tag(text).discard().name("op")
 }
 
-fn integer_decimal(s: &[char]) -> Result<BigUint, num_bigint::ParseBigIntError> {
+fn integer_decimal(s: &[char]) -> Result<Integer, ParseIntegerError> {
     if s.is_empty() {
-        Ok(BigUint::zero())
+        Ok(Integer::ZERO)
     } else {
-        s.iter().collect::<String>().parse::<BigUint>()
+        s.iter().collect::<String>().parse::<Integer>()
     }
 }
 
-fn integer_hex(s: &[char]) -> Result<BigUint, &str> {
+fn integer_hex(s: &[char]) -> Result<Integer, &str> {
     if s.is_empty() {
         return Err("Empty string cannot be a hexadecimal number");
     }
@@ -138,7 +140,9 @@ fn integer_hex(s: &[char]) -> Result<BigUint, &str> {
         bytes.push(16 * from_hex_digit(c1)? + from_hex_digit(c2)?);
     }
 
-    Ok(BigUint::from_bytes_be(&bytes))
+    let mut res = Integer::new();
+    res.assign_digits(&bytes, rug::integer::Order::Msf);
+    Ok(res)
 }
 
 fn p_hexdigit<'a>() -> Parser<'a, char> {
@@ -153,9 +157,9 @@ fn p_digit<'a>() -> Parser<'a, char> {
     is_a(|c| '0' <= c && c <= '9').name("digit")
 }
 
-fn p_posexp<'a>() -> Parser<'a, BigUint> {
+fn p_posexp<'a>() -> Parser<'a, Integer> {
     (sym('e') * p_digit().repeat(1..).collect().convert(integer_decimal))
-        | empty().map(|_| Zero::zero())
+        | empty().map(|_| Integer::ZERO)
 }
 
 fn negative<T: 'static>(p: Parser<T>) -> Parser<T>
@@ -168,16 +172,16 @@ where
         .name("neg")
 }
 
-fn p_exp<'a>() -> Parser<'a, BigInt> {
+fn p_exp<'a>() -> Parser<'a, Integer> {
     (sym('e')
         * negative(
             p_digit()
                 .repeat(1..)
                 .collect()
                 .convert(integer_decimal)
-                .map(BigInt::from),
+                .map(Integer::from),
         ))
-        | empty().map(|_| Zero::zero())
+        | empty().map(|_| Integer::ZERO)
 }
 
 fn p_int<'a>() -> Parser<'a, Atom> {
@@ -185,8 +189,8 @@ fn p_int<'a>() -> Parser<'a, Atom> {
         .collect()
         .convert(integer_hex)
         | (p_digit().repeat(1..).collect().convert(integer_decimal) + p_posexp())
-            .map(|(b, e)| b * BigUint::from(10u32).pow(e));
-    negative(p.map(BigInt::from))
+            .map(|(b, e)| b * Integer::from(10u32).pow(e.to_u32().unwrap()));
+    negative(p.map(Integer::from))
         .map(Ratio::from)
         .map(Atom::Rat)
         .name("int")
@@ -197,19 +201,20 @@ fn p_float<'a>() -> Parser<'a, Atom> {
         | (p_digit().repeat(0..) - sym('.') + p_digit().repeat(1..) + p_exp());
 
     let p_ratio = p.convert(|((pre, post), exp)| {
-        let ten = BigUint::from(10u32);
-        let comma_exp = ten.clone().pow(post.len());
+        let ten = Integer::from(10u32);
+        let comma_exp = ten.clone().pow(post.len() as u32);
         let base_num = integer_decimal(&pre)? * &comma_exp + integer_decimal(&post)?;
-        let base_rat = Ratio::from((BigInt::from(base_num), BigInt::from(comma_exp)));
-        Ok(match exp.to_biguint() {
-            Some(pos_exp) => base_rat * Ratio::from(BigInt::from(ten.pow(pos_exp))),
-
-            None => {
-                let exp_pow = BigInt::from(ten.pow((-exp).to_biguint().unwrap()));
-                let exp_rat = Ratio::from((One::one(), exp_pow));
-                base_rat * exp_rat
-            }
-        }) as Result<Ratio, num_bigint::ParseBigIntError>
+        let base_rat = Ratio::from((Integer::from(base_num), Integer::from(comma_exp)));
+        let res = if (&exp).signum() == -1 {
+            let exp = (-exp).to_u32().unwrap();
+            let exp_pow = Integer::from(ten.pow(exp));
+            let exp_rat = Rational::from((Integer::one(), exp_pow));
+            base_rat * exp_rat
+        } else {
+            let exp = exp.to_u32().unwrap();
+            base_rat * Ratio::from(Integer::from(ten.pow(exp)))
+        };
+        Ok::<_, ParseIntegerError>(res)
     });
 
     negative(p_ratio).map(Atom::Rat).name("float")

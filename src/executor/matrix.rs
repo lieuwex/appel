@@ -103,6 +103,14 @@ impl Matrix {
         }
     }
 
+    pub fn into_scalar(self) -> Option<Ratio> {
+        if self.is_scalar() {
+            Some(self.values.into_iter().nth(0).unwrap())
+        } else {
+            None
+        }
+    }
+
     // REVIEW: this seems broken
     pub fn get_at(&self, indices: Vec<usize>) -> Option<&Ratio> {
         if indices.len() != self.shape.len() {
