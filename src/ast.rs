@@ -5,16 +5,16 @@ use rug::{Integer, Rational};
 pub type Ratio = Rational;
 
 pub trait ToInteger {
-    fn to_integer(&self) -> &Integer;
-    fn into_integer(self) -> Integer;
+    fn to_integer(&self) -> Option<&Integer>;
+    fn into_integer(self) -> Option<Integer>;
 }
 
 impl ToInteger for Rational {
-    fn to_integer(&self) -> &Integer {
-        self.numer()
+    fn to_integer(&self) -> Option<&Integer> {
+        self.is_integer().then(|| self.numer())
     }
-    fn into_integer(self) -> Integer {
-        self.into_numer_denom().0
+    fn into_integer(self) -> Option<Integer> {
+        self.is_integer().then(|| self.into_numer_denom().0)
     }
 }
 

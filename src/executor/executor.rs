@@ -64,13 +64,11 @@ fn expect_scalar(v: ExecutorResult) -> Result<Ratio, String> {
 }
 
 fn to_usize_error(rat: &Ratio) -> Result<usize, String> {
-    if !rat.is_integer() {
-        Err("value is not an integer".to_owned())
-    } else {
-        let int = rat.to_integer();
-        int.to_usize()
-            .ok_or_else(|| "value too large for usize".to_owned())
-    }
+    let int = rat
+        .to_integer()
+        .ok_or_else(|| "value is not an integer".to_owned())?;
+    int.to_usize()
+        .ok_or_else(|| "value too large for usize".to_owned())
 }
 
 fn get_comp_op_fn(op: CompOp) -> impl Fn(Ratio, Ratio) -> Ratio {
@@ -89,11 +87,8 @@ fn get_comp_op_fn(op: CompOp) -> impl Fn(Ratio, Ratio) -> Ratio {
 fn call_binary(op: BinOp, a: Matrix, b: Matrix) -> Result<ExecutorResult, String> {
     let get_int = |m: Matrix| -> Result<Integer, String> {
         let s = expect_scalar(ExecutorResult::Value(Value::Matrix(m)))?;
-        if s.is_integer() {
-            Ok(s.into_integer())
-        } else {
-            Err(String::from("expected integer"))
-        }
+        s.into_integer()
+            .ok_or_else(|| String::from("expected integer"))
     };
 
     let matrix_to_res = |m: Matrix| -> ExecutorResult { ExecutorResult::Value(Value::Matrix(m)) };
@@ -174,7 +169,9 @@ fn call_binary(op: BinOp, a: Matrix, b: Matrix) -> Result<ExecutorResult, String
 
         BinOp::Drop => {
             let scalar = expect_scalar(ExecutorResult::Value(Value::Matrix(a)))?;
-            let n = scalar.into_integer();
+            let n = scalar
+                .into_integer()
+                .ok_or_else(|| "value must be an integer".to_owned())?;
 
             let (n, at_start) = if (&n).signum() == -1 {
                 (n.neg().into(), false)
@@ -202,8 +199,8 @@ fn call_binary(op: BinOp, a: Matrix, b: Matrix) -> Result<ExecutorResult, String
         BinOp::Rho => {
             let shape: Vec<usize> = a
                 .values
-                .iter()
-                .map(|v| to_usize_error(v))
+                .into_iter()
+                .map(|v| to_usize_error(&v))
                 .collect::<Result<_, String>>()?;
 
             let values: Vec<Ratio> = std::iter::repeat(b.values)
@@ -303,7 +300,11 @@ fn call_binary(op: BinOp, a: Matrix, b: Matrix) -> Result<ExecutorResult, String
             }
 
             let mut it = a.into_iter();
-            let amount = it.next().unwrap().into_integer();
+            let amount = it
+                .next()
+                .unwrap()
+                .into_integer()
+                .expect("amount must be an integer");
             let number = it.next().unwrap();
 
             let (amount, at_start) = if (&amount).signum() == -1 {
@@ -417,7 +418,8 @@ impl Executor {
 
                 let mut rng = rand::thread_rng();
                 let upper: u64 = x
-                    .to_integer()
+                    .into_integer()
+                    .ok_or_else(|| "value must be an integer".to_owned())?
                     .to_u64()
                     .ok_or_else(|| "value too large to be rolled".to_owned())?;
                 let val: u64 = rng.gen_range(0..=upper);
@@ -678,8 +680,8 @@ impl Executor {
                 }
 
                 let indices: Vec<usize> = indices
-                    .iter()
-                    .map(|v| to_usize_error(v))
+                    .into_iter()
+                    .map(|v| to_usize_error(&v))
                     .collect::<Result<_, String>>()?;
 
                 match m.get_at(indices) {
