@@ -489,13 +489,19 @@ impl Executor {
             }
 
             UnOp::Rho => {
-                let m = Matrix::try_from(res)?;
-                let values: Vec<Ratio> = m
-                    .shape
-                    .iter()
-                    .map(|s| Ratio::from_usize(*s).unwrap())
-                    .collect();
-                Ok(Matrix::make_vector(values).into())
+                let shape = res.into_value_iter()?.shape;
+
+                let new_shape: Vec<usize> = vec![shape.iter().sum()];
+                let iterator = shape
+                    .into_iter()
+                    .map(|s| Ratio::from_usize(s).unwrap())
+                    .map(Ok);
+
+                Ok(Chain::MatrixIterator {
+                    iterator: Box::new(iterator),
+                    shape: new_shape,
+                }
+                .into_result())
             }
 
             UnOp::Rev => {
@@ -532,8 +538,9 @@ impl Executor {
             }
 
             UnOp::Ravel => {
-                let matrix = Matrix::try_from(res)?;
-                Ok(Matrix::make_vector(matrix.values).into())
+                let IterShape { iterator, shape } = res.into_value_iter()?;
+                let len: usize = shape.into_iter().sum();
+                Ok(Chain::make_vector(Box::new(iterator), len).into_result())
             }
         }
     }
