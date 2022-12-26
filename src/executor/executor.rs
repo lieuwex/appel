@@ -422,14 +422,14 @@ impl Executor {
         }
         macro_rules! for_all_ok {
             ($f:expr) => {
-                for_all!(&|x: Ratio| Ok($f(x)))
+                for_all!(|x: Ratio| Ok($f(x)))
             };
         }
 
         match op {
             UnOp::Id => Ok(res),
-            UnOp::Neg => for_all_ok!(&|x: Ratio| x.neg()),
-            UnOp::Not => for_all_ok!(&|x: Ratio| {
+            UnOp::Neg => for_all_ok!(|x: Ratio| x.neg()),
+            UnOp::Not => for_all_ok!(|x: Ratio| {
                 if x == Ratio::zero() {
                     Ratio::one()
                 } else {
@@ -437,7 +437,7 @@ impl Executor {
                 }
             }),
 
-            UnOp::RollInt => for_all!(&|x: Ratio| {
+            UnOp::RollInt => for_all!(|x: Ratio| {
                 if x <= Ratio::zero() {
                     return Err("value must be greater than 0".to_owned());
                 }
@@ -451,7 +451,7 @@ impl Executor {
                 let val: u64 = rng.gen_range(0..=upper);
                 Ratio::from_u64(val).ok_or_else(|| "couldn't convert u64 to ratio".to_owned())
             }),
-            UnOp::RollFloat => for_all!(&|x: Ratio| {
+            UnOp::RollFloat => for_all!(|x: Ratio| {
                 if x <= Ratio::zero() {
                     return Err("value must be greater than 0".to_owned());
                 }
@@ -463,9 +463,9 @@ impl Executor {
                     .ok_or_else(|| "couldn't convert f64 to ratio".to_owned())
             }),
 
-            UnOp::Floor => for_all_ok!(&|x: Ratio| x.floor()),
-            UnOp::Ceil => for_all_ok!(&|x: Ratio| x.ceil()),
-            UnOp::Abs => for_all_ok!(&|x: Ratio| x.abs()),
+            UnOp::Floor => for_all_ok!(|x: Ratio| x.floor()),
+            UnOp::Ceil => for_all_ok!(|x: Ratio| x.ceil()),
+            UnOp::Abs => for_all_ok!(|x: Ratio| x.abs()),
             UnOp::Sin | UnOp::Cos | UnOp::Tan => for_all!(move |x: Ratio| {
                 let f = to_f64(&x).ok_or_else(|| "couldn't convert fo f64".to_owned())?;
                 let res = match op {
@@ -476,7 +476,7 @@ impl Executor {
                 };
                 Ratio::from_f64(res).ok_or_else(|| "invalid result".to_owned())
             }),
-            UnOp::Sign => for_all_ok!(&|x: Ratio| x.signum()),
+            UnOp::Sign => for_all_ok!(|x: Ratio| x.signum()),
 
             UnOp::Iota => {
                 let s = expect_scalar(res)?;
@@ -607,7 +607,7 @@ impl Executor {
         }
 
         match op {
-            FoldOp::BinOp(op) => apply!(&|acc, item| call_binary(op, acc, item)),
+            FoldOp::BinOp(op) => apply!(|acc, item| call_binary(op, acc, item)),
 
             FoldOp::FunctionRef(f) => match self.variables.get(&f) {
                 None => Err(format!("variable {} not found", f)),
@@ -618,7 +618,7 @@ impl Executor {
                             return Err(String::from("function does not take 2 params"));
                         }
 
-                        apply!(&|acc, item| {
+                        apply!(|acc, item| {
                             let args = vec![acc, item];
                             let m = Matrix::try_from(self.call_function(f, args)?)?;
                             Ok(ExecutorResult::Value(Value::Matrix(m)))
