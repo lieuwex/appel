@@ -1,3 +1,4 @@
+pub mod chain;
 #[allow(clippy::module_inception)]
 pub mod executor;
 pub mod function;

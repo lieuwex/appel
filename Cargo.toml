@@ -13,3 +13,5 @@ dtoa = "0.4"
 
 rug = { version = "1.18", features = ["default", "num-traits"] }
 num-traits = "*"
+
+dyn-clonable = "0.9.0"

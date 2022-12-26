@@ -1,8 +1,9 @@
 use std::collections::{HashMap, VecDeque};
 use std::convert::TryFrom;
-use std::ops::{Add, Deref, Neg};
+use std::ops::{Add, Deref, DerefMut, Neg};
 
 use crate::ast::*;
+use crate::executor::chain::{Chain, ValueIter};
 use crate::parser;
 
 use num_traits::*;
@@ -12,21 +13,13 @@ use rand::prelude::*;
 
 use super::function::Function;
 use super::matrix::Matrix;
-use super::result::ExecutorResult;
+use super::result::{ExecutorResult, IterShape};
 use super::value::Value;
 
 const FLOAT_PRECISION: u32 = 100;
 
 pub fn to_f64(val: &Ratio) -> Option<f64> {
-    let (num, den) = (val.numer(), val.denom());
-    let fnum = num.to_f64();
-    let fden = den.to_f64();
-
-    if fden == 0.0 {
-        None
-    } else {
-        Some(fnum / fden)
-    }
+    Some(val.to_f64())
 }
 
 fn pow(a: Ratio, b: Ratio) -> Option<Ratio> {
@@ -84,7 +77,9 @@ fn get_comp_op_fn(op: CompOp) -> impl Fn(Ratio, Ratio) -> Ratio {
 
 fn call_binary(op: BinOp, a: Matrix, b: Matrix) -> Result<ExecutorResult, String> {
     let get_int = |m: Matrix| -> Result<Integer, String> {
-        let s = expect_scalar(ExecutorResult::Value(Value::Matrix(m)))?;
+        let s = m
+            .into_scalar()
+            .ok_or_else(|| String::from("expected scalar"))?;
         s.into_integer()
             .ok_or_else(|| String::from("expected integer"))
     };
@@ -145,7 +140,7 @@ fn call_binary(op: BinOp, a: Matrix, b: Matrix) -> Result<ExecutorResult, String
         BinOp::Sub => apply_ok!(|a, b| a - b),
         BinOp::Mul => apply_ok!(|a, b| a * b),
         BinOp::Div => apply_ok!(|a, b| a / b),
-        BinOp::Mod => todo!(),
+        BinOp::Mod => apply_ok!(|a: Ratio, b: Ratio| (a / b).rem_trunc()),
         BinOp::Pow => {
             apply!(|a, b| pow(a, b).ok_or_else(|| "error while converting to i32".to_owned()))
         }
@@ -217,22 +212,21 @@ fn call_binary(op: BinOp, a: Matrix, b: Matrix) -> Result<ExecutorResult, String
             let b = get_int(b)?;
 
             let radix = a
-                .to_u32()
+                .to_i32()
                 .and_then(|r| if 2 <= r && r <= 256 { Some(r) } else { None })
                 .ok_or(String::from("radix must be greater than or equal to 2"))?;
 
-            let (sign, bits) = b.to_radix_be(radix);
+            let sign = if b.is_negative() { -1 } else { 1 };
+            let bytes: Vec<u8> = {
+                let mut v = Vec::with_capacity(b.significant_digits::<u8>());
+                b.write_digits(&mut v, rug::integer::Order::Msf);
+                v
+            };
 
-            let values: Vec<Ratio> = bits
+            let values: Vec<Ratio> = bytes
                 .into_iter()
                 .map(|b| Ratio::from_u8(b).unwrap())
-                .map(|b| {
-                    if sign == num_bigint::Sign::Minus {
-                        b.neg()
-                    } else {
-                        b
-                    }
-                })
+                .map(|b| if sign == -1 { b.neg() } else { b })
                 .collect();
 
             Ok(Matrix::make_vector(values).into())
@@ -243,27 +237,51 @@ fn call_binary(op: BinOp, a: Matrix, b: Matrix) -> Result<ExecutorResult, String
 
             /*
             let a = get_int(a)?;
-            let b = expect_vector(matrix_to_res(b))?;
+            let b = {
+                let b = expect_vector(matrix_to_res(b))?;
+                let b: Option<Vec<Integer>> = b.into_iter().map(|b| b.into_integer()).collect();
+                b.ok_or_else(|| "all unpacked values should be integers".to_owned())?
+            };
 
             let radix = a
-                .to_u32()
+                .to_i32()
+                // check variant a
                 .and_then(|r| if 2 <= r && r <= 256 { Some(r) } else { None })
                 .ok_or(String::from("radix must be greater than or equal to 2"))?;
 
-            let sign = if b.iter().any(|b| b.to_integer().sign() == Sign::Minus) {
-                Sign::Minus
-            } else {
-                Sign::Plus
+            let is_negative = b.iter().any(|b| b.is_negative());
+            let bytes: Vec<u8> = b.into_iter().map(|b| b.to_u8().unwrap()).collect();
+
+            // check variant b
+            if let Some((idx, val)) = bytes
+                .iter()
+                .enumerate()
+                .find(|(_, &x)| !(0 < x && (x as i32) < radix))
+            {
+                return Err(format!(
+                    "Value at index {idx} is out-of-bounds, value is {val}, radix is {radix}"
+                ));
+            }
+
+            let packed = {
+                let mut res = Integer::new();
+
+                // SAFETY: assign_bytes_radix_unchecked assumes two things:
+                // (a) 2 <= radix <= 256
+                // (b) all bytes are 0 <= x < radix
+                // We check both.
+                unsafe {
+                    res.assign_bytes_radix_unchecked(&bytes, radix, is_negative);
+                }
+
+                if is_negative {
+                    res.neg()
+                } else {
+                    res
+                }
             };
 
-            let bits: Vec<u8> = b.iter().map(|b| b.to_integer().to_u8().unwrap()).collect();
-
-            let packed = BigInt::from_radix_be(sign, &bits, radix);
-            let int = match packed {
-                None => return Err(String::from("couldn't convert bits to int")),
-                Some(i) => i,
-            };
-            Ok(Matrix::from(Ratio::from_integer(int)).into())
+            Ok(Matrix::from(Ratio::from(packed)).into())
             */
         }
 
@@ -390,19 +408,16 @@ impl Executor {
 
         macro_rules! for_all {
             ($f:expr) => {{
-                let val = Matrix::try_from(res)?;
+                let IterShape { iterator, shape } = res.into_value_iter()?;
 
-                let values: Result<Vec<Ratio>, String> = val.values.into_iter().map($f).collect();
-                let values = match values {
-                    Err(e) => return Err(e),
-                    Ok(s) => s,
-                };
+                // TODO: remove unwrap
+                let values = iterator.map(|x| x.unwrap()).map($f);
 
-                let new = Matrix {
-                    values,
-                    shape: val.shape,
+                let new = Chain::MatrixIterator {
+                    iterator: Box::new(values),
+                    shape,
                 };
-                Ok(new.into())
+                Ok(new.into_result())
             }};
         }
         macro_rules! for_all_ok {
@@ -451,7 +466,7 @@ impl Executor {
             UnOp::Floor => for_all_ok!(&|x: Ratio| x.floor()),
             UnOp::Ceil => for_all_ok!(&|x: Ratio| x.ceil()),
             UnOp::Abs => for_all_ok!(&|x: Ratio| x.abs()),
-            UnOp::Sin | UnOp::Cos | UnOp::Tan => for_all!(&|x: Ratio| {
+            UnOp::Sin | UnOp::Cos | UnOp::Tan => for_all!(move |x: Ratio| {
                 let f = to_f64(&x).ok_or_else(|| "couldn't convert fo f64".to_owned())?;
                 let res = match op {
                     UnOp::Sin => f.sin(),
@@ -466,8 +481,11 @@ impl Executor {
             UnOp::Iota => {
                 let s = expect_scalar(res)?;
                 let upper = to_usize_error(&s)?;
-                let values: Vec<_> = (1..=upper).filter_map(Ratio::from_usize).collect();
-                Ok(Matrix::make_vector(values).into())
+
+                let it = (1..=upper).map(|v| Ratio::from_usize(v).ok_or_else(|| String::new()));
+                let len = upper;
+
+                Ok(Chain::make_vector(Box::new(it), len).into_result())
             }
 
             UnOp::Rho => {

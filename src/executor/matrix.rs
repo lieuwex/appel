@@ -155,6 +155,7 @@ impl TryFrom<ExecutorResult> for Matrix {
             ExecutorResult::None => Err(String::from("expected value")),
             ExecutorResult::Info(_) => Err(String::from("expected value, got an info string")),
             ExecutorResult::Setting(_, _) => Err(String::from("expected value, got a setting")),
+            ExecutorResult::Chain(c) => Matrix::try_from(Value::try_from(c)?),
             ExecutorResult::Value(val) => Matrix::try_from(val),
         }
     }

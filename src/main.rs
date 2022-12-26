@@ -2,6 +2,7 @@ mod ast;
 mod executor;
 mod parser;
 
+use std::convert::TryInto;
 use std::fs;
 use std::io::BufRead;
 
@@ -43,6 +44,7 @@ impl State {
         let res = match self.exec.execute(parsed, true) {
             Err(e) => Err(format!("error while executing: {}", e)),
             Ok(ExecutorResult::None) => Ok(String::new()),
+            Ok(ExecutorResult::Chain(c)) => Ok(format_res(c.try_into()?, self.formatter)),
             Ok(ExecutorResult::Value(res)) => Ok(format_res(res, self.formatter)),
             Ok(ExecutorResult::Info(s)) => Ok(s),
             Ok(ExecutorResult::Setting(key, val)) => {
