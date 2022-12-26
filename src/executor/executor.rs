@@ -15,6 +15,8 @@ use super::matrix::Matrix;
 use super::result::ExecutorResult;
 use super::value::Value;
 
+const FLOAT_PRECISION: u32 = 100;
+
 pub fn to_f64(val: &Ratio) -> Option<f64> {
     let (num, den) = (val.numer(), val.denom());
     let fnum = num.to_f64();
@@ -33,8 +35,8 @@ fn pow(a: Ratio, b: Ratio) -> Option<Ratio> {
     return Some(Ratio::from(res));
 }
 fn log(base: Ratio, n: Ratio) -> Option<Ratio> {
-    let base = Float::new(float::prec_max()).add(base);
-    let n = Float::new(float::prec_max()).add(n);
+    let base = Float::new(FLOAT_PRECISION).add(base);
+    let n = Float::new(FLOAT_PRECISION).add(n);
 
     let res = n.log2() / base.log2();
     res.to_rational()
