@@ -3,7 +3,7 @@ use std::convert::TryFrom;
 use std::ops::{Add, Deref, DerefMut, Neg};
 
 use crate::ast::*;
-use crate::executor::chain::{Chain, ValueIter};
+use crate::executor::chain::{Chain, IterShape, ValueIter};
 use crate::parser;
 
 use num_traits::*;
@@ -13,7 +13,7 @@ use rand::prelude::*;
 
 use super::function::Function;
 use super::matrix::Matrix;
-use super::result::{ExecutorResult, IterShape};
+use super::result::ExecutorResult;
 use super::value::Value;
 
 const FLOAT_PRECISION: u32 = 100;
@@ -75,7 +75,10 @@ fn get_comp_op_fn(op: CompOp) -> impl Fn(Ratio, Ratio) -> Ratio {
     move |a: Ratio, b: Ratio| -> Ratio { Ratio::from_u8(fun(a, b) as u8).unwrap() }
 }
 
-fn call_binary(op: BinOp, a: Matrix, b: Matrix) -> Result<ExecutorResult, String> {
+fn call_binary(op: BinOp, a: Chain, b: Chain) -> Result<ExecutorResult, String> {
+    let a = a.into_iter_shape()?;
+    let b = b.into_iter_shape()?;
+
     let get_int = |m: Matrix| -> Result<Integer, String> {
         let s = m
             .into_scalar()
@@ -90,9 +93,9 @@ fn call_binary(op: BinOp, a: Matrix, b: Matrix) -> Result<ExecutorResult, String
         ($f:expr) => {{
             if a.shape == b.shape {
                 let values = a
-                    .values
-                    .into_iter()
-                    .zip(b.values)
+                    .iterator
+                    .zip(b.iterator)
+                    .map(|(a, b)| (a.unwrap(), b.unwrap()))
                     .map(|(a, b): (Rational, Rational)| $f(a, b).map(Ratio::from))
                     .collect::<Result<_, String>>()?;
 
@@ -113,8 +116,8 @@ fn call_binary(op: BinOp, a: Matrix, b: Matrix) -> Result<ExecutorResult, String
 
             let matrix = Matrix {
                 values: non_scalar
-                    .values
-                    .into_iter()
+                    .iterator
+                    .map(Result::unwrap)
                     .map(|v: Rational| {
                         if scalar_is_left {
                             $f(scalar.clone(), v).map(Ratio::from)
@@ -152,16 +155,18 @@ fn call_binary(op: BinOp, a: Matrix, b: Matrix) -> Result<ExecutorResult, String
                 return Err(String::from("rank mismatch"));
             }
 
-            let values: Vec<Ratio> = a.values.into_iter().chain(b.values).collect();
-            Ok(Matrix {
-                values,
+            let values = a.iterator.chain(b.iterator);
+            Ok(Chain::MatrixIterator {
+                iterator: Box::new(values),
                 shape: a.shape,
             }
-            .into())
+            .into_result())
         }
 
         BinOp::Drop => {
-            let scalar = expect_scalar(ExecutorResult::Value(Value::Matrix(a)))?;
+            let scalar = a
+                .into_scalar()
+                .ok_or_else(|| String::from("expected vector, got matrix"))?;
             let n = scalar
                 .into_integer()
                 .ok_or_else(|| "value must be an integer".to_owned())?;
@@ -175,33 +180,36 @@ fn call_binary(op: BinOp, a: Matrix, b: Matrix) -> Result<ExecutorResult, String
                 .to_usize()
                 .ok_or_else(|| "value too large for usize".to_owned())?;
 
-            let values = if at_start {
-                b.values.into_iter().skip(n).collect()
+            let values: Box<dyn ValueIter> = if at_start {
+                Box::new(b.iterator.skip(n))
             } else {
-                let amount = b.values.len() - n;
-                b.values.into_iter().take(amount).collect()
+                let amount = b.len() - n;
+                Box::new(b.iterator.take(amount))
             };
 
-            Ok(Matrix {
-                values,
+            Ok(Chain::MatrixIterator {
+                iterator: values,
                 shape: b.shape,
             }
-            .into())
+            .into_result())
         }
 
         BinOp::Rho => {
             let shape: Vec<usize> = a
-                .values
-                .into_iter()
+                .iterator
+                .map(Result::unwrap)
                 .map(|v| to_usize_error(&v))
                 .collect::<Result<_, String>>()?;
 
-            let values: Vec<Ratio> = std::iter::repeat(b.values)
+            let values = std::iter::repeat(b.iterator)
                 .flatten()
-                .take(shape.iter().product())
-                .collect();
+                .take(shape.iter().product());
 
-            Ok(Matrix { values, shape }.into())
+            Ok(Chain::MatrixIterator {
+                iterator: Box::new(values),
+                shape,
+            }
+            .into_result())
         }
 
         BinOp::Unpack => {
@@ -286,12 +294,13 @@ fn call_binary(op: BinOp, a: Matrix, b: Matrix) -> Result<ExecutorResult, String
         }
 
         BinOp::In => {
-            let base_set: Vec<Ratio> = b.values;
+            let base_set: Result<Vec<Ratio>, String> = b.iterator.collect();
+            let base_set = base_set?;
             let values: Vec<Ratio> = a
-                .values
-                .iter()
+                .iterator
+                .map(Result::unwrap)
                 .map(|x| {
-                    if base_set.contains(x) {
+                    if base_set.contains(&x) {
                         Ratio::one()
                     } else {
                         Ratio::zero()
@@ -310,6 +319,7 @@ fn call_binary(op: BinOp, a: Matrix, b: Matrix) -> Result<ExecutorResult, String
         BinOp::Min => apply_ok!(|a: Ratio, b: Ratio| if b < a { b } else { a }),
 
         BinOp::Pad => {
+            let a = Matrix::try_from(a)?;
             let a = expect_vector(ExecutorResult::Value(Value::Matrix(a)))?;
             if a.len() != 2 {
                 return Err(format!("expected 2 arguments on the left, got {}", a.len()));
@@ -328,7 +338,10 @@ fn call_binary(op: BinOp, a: Matrix, b: Matrix) -> Result<ExecutorResult, String
             } else {
                 (amount, true)
             };
-            let mut values: Vec<_> = b.values;
+
+            let values: Result<Vec<_>, String> = b.iterator.collect();
+            let mut values: Vec<_> = values?;
+
             let mut to_add = vec![number; amount.to_usize().unwrap()];
             if at_start {
                 to_add.append(&mut values);
@@ -385,7 +398,10 @@ impl Executor {
         res
     }
 
-    fn call_function(&self, f: &Function, args: Vec<Matrix>) -> Result<ExecutorResult, String> {
+    fn call_function(&self, f: &Function, args: Vec<Chain>) -> Result<ExecutorResult, String> {
+        let args: Result<Vec<Matrix>, _> = args.into_iter().map(Matrix::try_from).collect();
+        let args = args?;
+
         if args.len() != f.params.len() {
             return Err(format!(
                 "expected {} arguments got {}",
@@ -408,7 +424,7 @@ impl Executor {
 
         macro_rules! for_all {
             ($f:expr) => {{
-                let IterShape { iterator, shape } = res.into_value_iter()?;
+                let IterShape { iterator, shape } = res.into_iter_shape()?;
 
                 // TODO: remove unwrap
                 let values = iterator.map(|x| x.unwrap()).map($f);
@@ -489,10 +505,11 @@ impl Executor {
             }
 
             UnOp::Rho => {
-                let shape = res.into_value_iter()?.shape;
+                let res = res.into_iter_shape()?;
 
-                let new_shape: Vec<usize> = vec![shape.iter().sum()];
-                let iterator = shape
+                let new_shape: Vec<usize> = vec![res.len()];
+                let iterator = res
+                    .shape
                     .into_iter()
                     .map(|s| Ratio::from_usize(s).unwrap())
                     .map(Ok);
@@ -538,7 +555,7 @@ impl Executor {
             }
 
             UnOp::Ravel => {
-                let IterShape { iterator, shape } = res.into_value_iter()?;
+                let IterShape { iterator, shape } = res.into_iter_shape()?;
                 let len: usize = shape.into_iter().sum();
                 Ok(Chain::make_vector(Box::new(iterator), len).into_result())
             }
@@ -548,8 +565,8 @@ impl Executor {
     fn execute_binary(&mut self, op: BinOp, a: &Expr, b: &Expr) -> Result<ExecutorResult, String> {
         // (a/b)^(c/d) = (\sqrt d {a^c}) / (\sqrt d {b ^c})
 
-        let a = Matrix::try_from(self.execute_expr(a)?)?;
-        let b = Matrix::try_from(self.execute_expr(b)?)?;
+        let a = self.execute_expr(a)?.into_chain()?;
+        let b = self.execute_expr(b)?.into_chain()?;
         call_binary(op, a, b)
     }
 
@@ -572,10 +589,11 @@ impl Executor {
 
                     // fold
                     it.try_fold(
-                        ExecutorResult::Value(Value::Matrix(Matrix::from(first))),
+                        ExecutorResult::Chain(Chain::make_scalar(first)),
                         |acc, item| -> Result<ExecutorResult, String> {
-                            let acc = Matrix::try_from(acc)?;
-                            $f(acc, Matrix::from(item))
+                            let acc = acc.into_chain()?;
+                            let item = Chain::make_scalar(item);
+                            $f(acc, item)
                         },
                     )
                 } else {
@@ -592,8 +610,8 @@ impl Executor {
                             .into());
                         }
 
-                        let prev = Matrix::from(accum[i - 1].clone());
-                        let curr = Matrix::from(items[i].clone());
+                        let prev = Chain::make_scalar(accum[i - 1].clone());
+                        let curr = Chain::make_scalar(items[i].clone());
 
                         match $f(prev, curr) {
                             e @ Err(_) => break e,
@@ -620,8 +638,8 @@ impl Executor {
 
                         apply!(|acc, item| {
                             let args = vec![acc, item];
-                            let m = Matrix::try_from(self.call_function(f, args)?)?;
-                            Ok(ExecutorResult::Value(Value::Matrix(m)))
+                            let res = self.call_function(f, args)?;
+                            Ok(res)
                         })
                     }
                 },
@@ -637,7 +655,7 @@ impl Executor {
         let mut x = Matrix::try_from(self.execute_expr(b)?)?;
 
         for value in &mut x.values {
-            let res = self.call_function(&f, vec![Matrix::from(value.clone())])?;
+            let res = self.call_function(&f, vec![Chain::make_scalar(value.clone())])?;
             let m = Matrix::try_from(res)?;
             *value = m
                 .into_scalar()
@@ -672,7 +690,7 @@ impl Executor {
                     Value::Function(f) => {
                         let mut args = Vec::with_capacity(expressions.len() - 1);
                         for e in expressions.into_iter().skip(1) {
-                            args.push(Matrix::try_from(ExecutorResult::Value(e))?);
+                            args.push(Chain::Value(e));
                         }
 
                         self.call_function(&f, args)
