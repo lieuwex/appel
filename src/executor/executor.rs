@@ -576,28 +576,28 @@ impl Executor {
         expr: &Expr,
         is_fold: bool,
     ) -> Result<ExecutorResult, String> {
-        let matrix = Matrix::try_from(self.execute_expr(expr)?)?;
-        if matrix.values.len() < 1 {
+        let iter_shape = self.execute_expr(expr)?.into_iter_shape()?;
+        if iter_shape.len() < 1 {
             return Err(String::from("matrix must have at least 1 value"));
         }
 
         macro_rules! apply {
             ($f:expr) => {{
                 if is_fold {
-                    let mut it = matrix.values.into_iter();
+                    let mut it = iter_shape.iterator;
                     let first = it.next().unwrap();
 
                     // fold
                     it.try_fold(
-                        ExecutorResult::Chain(Chain::make_scalar(first)),
+                        ExecutorResult::Chain(Chain::make_scalar(first?)),
                         |acc, item| -> Result<ExecutorResult, String> {
                             let acc = acc.into_chain()?;
-                            let item = Chain::make_scalar(item);
+                            let item = Chain::make_scalar(item?);
                             $f(acc, item)
                         },
                     )
                 } else {
-                    let items: Vec<Ratio> = matrix.values;
+                    let items: Vec<Ratio> = iter_shape.iterator.map(Result::unwrap).collect();
                     let mut accum = vec![items[0].clone()];
 
                     let mut i = 1;
@@ -605,7 +605,7 @@ impl Executor {
                         if i >= items.len() {
                             break Ok(Matrix {
                                 values: accum,
-                                shape: matrix.shape,
+                                shape: iter_shape.shape,
                             }
                             .into());
                         }
