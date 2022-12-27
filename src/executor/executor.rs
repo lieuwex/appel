@@ -1,4 +1,4 @@
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::convert::TryFrom;
 use std::ops::{Add, Deref, DerefMut, Neg};
 
@@ -96,14 +96,13 @@ fn call_binary(op: BinOp, a: Chain, b: Chain) -> Result<ExecutorResult, String> 
                     .iterator
                     .zip(b.iterator)
                     .map(|(a, b)| (a.unwrap(), b.unwrap()))
-                    .map(|(a, b): (Rational, Rational)| $f(a, b).map(Ratio::from))
-                    .collect::<Result<_, String>>()?;
+                    .map(move |(a, b): (Rational, Rational)| $f(a, b).map(Ratio::from));
 
-                let matrix = Matrix {
-                    values,
+                let matrix = Chain::MatrixIterator {
+                    iterator: Box::new(values),
                     shape: a.shape,
                 };
-                return Ok(matrix.into());
+                return Ok(matrix.into_result());
             }
 
             let (scalar, non_scalar, scalar_is_left) = if let Some(s) = a.scalar() {
@@ -114,22 +113,20 @@ fn call_binary(op: BinOp, a: Chain, b: Chain) -> Result<ExecutorResult, String> 
                 return Err(String::from("rank mismatch"));
             };
 
-            let matrix = Matrix {
-                values: non_scalar
-                    .iterator
-                    .map(Result::unwrap)
-                    .map(|v: Rational| {
+            let matrix = Chain::MatrixIterator {
+                iterator: Box::new(non_scalar.iterator.map(Result::unwrap).map(
+                    move |v: Rational| {
                         if scalar_is_left {
                             $f(scalar.clone(), v).map(Ratio::from)
                         } else {
                             $f(v, scalar.clone()).map(Ratio::from)
                         }
-                    })
-                    .collect::<Result<_, String>>()?,
+                    },
+                )),
                 shape: non_scalar.shape,
             };
 
-            Ok(matrix.into())
+            Ok(matrix.into_result())
         }};
     }
     macro_rules! apply_ok {
@@ -294,25 +291,25 @@ fn call_binary(op: BinOp, a: Chain, b: Chain) -> Result<ExecutorResult, String> 
         }
 
         BinOp::In => {
-            let base_set: Result<Vec<Ratio>, String> = b.iterator.collect();
+            let base_set: Result<HashSet<Ratio>, String> = b.iterator.collect();
             let base_set = base_set?;
-            let values: Vec<Ratio> = a
+            let values = a
                 .iterator
                 .map(Result::unwrap)
-                .map(|x| {
+                .map(move |x| {
                     if base_set.contains(&x) {
                         Ratio::one()
                     } else {
                         Ratio::zero()
                     }
                 })
-                .collect();
+                .map(Result::Ok);
 
-            Ok(Matrix {
-                values,
+            Ok(Chain::MatrixIterator {
+                iterator: Box::new(values),
                 shape: a.shape,
             }
-            .into())
+            .into_result())
         }
 
         BinOp::Max => apply_ok!(|a: Ratio, b: Ratio| if b > a { b } else { a }),
@@ -523,35 +520,38 @@ impl Executor {
 
             UnOp::Rev => {
                 let m = Matrix::try_from(res)?;
-                let values: Vec<Ratio> = m.values.into_iter().rev().collect();
-                Ok(Matrix {
-                    values,
+                let values = m.values.into_iter().rev().map(Result::Ok);
+                Ok(Chain::MatrixIterator {
+                    iterator: Box::new(values),
                     shape: m.shape,
                 }
-                .into())
+                .into_result())
             }
 
             UnOp::Up | UnOp::Down => {
-                let matrix = Matrix::try_from(res)?;
-                let mut values: Vec<(usize, Ratio)> =
-                    matrix.values.into_iter().enumerate().collect();
+                let IterShape { iterator, shape } = res.into_iter_shape()?;
+                let values: Result<Vec<(usize, Ratio)>, String> = iterator
+                    .enumerate()
+                    .map(|(i, x)| x.map(|x| (i, x)))
+                    .collect();
+                let mut values = values?;
 
-                values.sort_by(|a, b| a.1.cmp(&b.1));
-
-                let values: Vec<Ratio> = (if op == UnOp::Up {
-                    values
+                if op == UnOp::Up {
+                    values.sort_by(|a, b| a.1.cmp(&b.1))
                 } else {
-                    values.into_iter().rev().collect()
-                })
-                .into_iter()
-                .map(|v| Ratio::from_usize(v.0).unwrap())
-                .collect();
-
-                Ok(Matrix {
-                    values,
-                    shape: matrix.shape,
+                    values.sort_by(|a, b| b.1.cmp(&a.1))
                 }
-                .into())
+
+                let values = values
+                    .into_iter()
+                    .map(move |v| Ratio::from_usize(v.0).unwrap())
+                    .map(Result::Ok);
+
+                Ok(Chain::MatrixIterator {
+                    iterator: Box::new(values),
+                    shape,
+                }
+                .into_result())
             }
 
             UnOp::Ravel => {
