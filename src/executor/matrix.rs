@@ -15,7 +15,7 @@ pub enum Formatter {
 }
 
 impl Formatter {
-    fn apply(self, rat: &Ratio) -> String {
+    pub fn apply(self, rat: &Ratio) -> String {
         if rat.is_integer() {
             return format!("{}", rat);
         }
