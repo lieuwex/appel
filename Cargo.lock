@@ -21,6 +21,7 @@ dependencies = [
  "num-traits",
  "pom",
  "rand",
+ "replace_with",
  "rug",
  "tabwriter",
 ]
@@ -232,6 +233,12 @@ checksum = "d51e9f596de227fda2ea6c84607f5558e196eeaf43c986b724ba4fb8fdf497e7"
 dependencies = [
  "rand_core",
 ]
+
+[[package]]
+name = "replace_with"
+version = "0.1.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e3a8614ee435691de62bcffcf4a66d91b3594bf1428a5722e79103249a095690"
 
 [[package]]
 name = "rug"

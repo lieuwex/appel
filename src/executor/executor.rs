@@ -7,6 +7,7 @@ use crate::executor::chain::{Chain, IterShape, ValueIter};
 use crate::parser;
 
 use num_traits::*;
+use replace_with::replace_with_or_default_and_return;
 use rug::{float, Float, Integer, Rational};
 
 use rand::prelude::*;
@@ -655,11 +656,19 @@ impl Executor {
         let mut x = Matrix::try_from(self.execute_expr(b)?)?;
 
         for value in &mut x.values {
-            let res = self.call_function(&f, vec![Chain::make_scalar(value.clone())])?;
-            let m = Matrix::try_from(res)?;
-            *value = m
-                .into_scalar()
-                .ok_or(format!("Function returned non-scalar in map"))?
+            replace_with_or_default_and_return(value, |value| {
+                let res: Result<Rational, String> = (|| {
+                    let res = self.call_function(&f, vec![Chain::make_scalar(value)])?;
+                    res.into_iter_shape()?
+                        .into_scalar()
+                        .ok_or(format!("Function returned non-scalar in map"))
+                })();
+
+                match res {
+                    Ok(r) => (Ok(()), r),
+                    Err(e) => (Err(e), Rational::default()),
+                }
+            })?;
         }
 
         Ok(ExecutorResult::from(x))
