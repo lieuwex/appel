@@ -1,5 +1,5 @@
 use std::collections::{HashMap, HashSet, VecDeque};
-use std::convert::TryFrom;
+use std::convert::{TryFrom, TryInto};
 use std::ops::{Add, Deref, DerefMut, Neg};
 
 use crate::ast::*;
@@ -782,9 +782,8 @@ impl Executor {
             Statement::Assign(var, val) => {
                 err_var_exists!(var, false);
                 let res = self.execute_expr(&val)?;
-                if let ExecutorResult::Value(val) = &res {
-                    self.variables.insert(var, val.clone());
-                }
+                let val: Value = res.clone().into_chain()?.try_into()?;
+                self.variables.insert(var, val);
                 Ok(res)
             }
 
@@ -850,9 +849,12 @@ impl Executor {
         };
 
         if remember {
-            if let Ok(ExecutorResult::Value(Value::Matrix(m))) = &res {
-                self.variables
-                    .insert(String::from("_"), Value::Matrix(m.clone()));
+            let val = res
+                .clone()
+                .and_then(|r| r.into_chain())
+                .and_then(Value::try_from);
+            if let Ok(Value::Matrix(m)) = val {
+                self.variables.insert(String::from("_"), Value::Matrix(m));
             }
         }
 
