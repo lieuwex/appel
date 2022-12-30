@@ -6,6 +6,7 @@ use crate::ast::*;
 use std::convert::TryFrom;
 use std::io::Write;
 
+use smallvec::{smallvec, SmallVec};
 use tabwriter::{Alignment, TabWriter};
 
 #[derive(Clone, Copy)]
@@ -41,7 +42,7 @@ impl Formatter {
 #[derive(Clone, Debug)]
 pub struct Matrix {
     pub values: Vec<Ratio>,
-    pub shape: Vec<usize>,
+    pub shape: SmallVec<[usize; 4]>,
 }
 
 impl Matrix {
@@ -87,7 +88,7 @@ impl Matrix {
 
 impl Matrix {
     pub fn make_vector(values: Vec<Ratio>) -> Self {
-        let shape = vec![values.len()];
+        let shape = smallvec![values.len()];
         Self { values, shape }
     }
 
@@ -132,7 +133,7 @@ impl From<Ratio> for Matrix {
     fn from(rat: Ratio) -> Self {
         Self {
             values: vec![rat],
-            shape: vec![1],
+            shape: smallvec![1],
         }
     }
 }

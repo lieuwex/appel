@@ -17,3 +17,5 @@ num-traits = "*"
 dyn-clonable = "0.9.0"
 
 replace_with = "0.1.7"
+
+smallvec = { version = "1.10.0", features = ["union", "const_generics", "const_new"] }

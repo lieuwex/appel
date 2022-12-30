@@ -13,6 +13,8 @@ use rug::{float, Float, Integer, Rational};
 
 use rand::prelude::*;
 
+use smallvec::{smallvec, SmallVec};
+
 use super::function::Function;
 use super::matrix::Matrix;
 use super::result::ExecutorResult;
@@ -194,7 +196,7 @@ fn call_binary(op: BinOp, a: Chain, b: Chain) -> Result<ExecutorResult, String> 
         }
 
         BinOp::Rho => {
-            let shape: Vec<usize> = a
+            let shape: SmallVec<[usize; 4]> = a
                 .iterator
                 .map(Result::unwrap)
                 .map(|v| to_usize_error(&v))
@@ -510,7 +512,7 @@ impl Executor {
             UnOp::Rho => {
                 let res = res.into_iter_shape()?;
 
-                let new_shape: Vec<usize> = vec![res.len()];
+                let new_shape = smallvec![res.len()];
                 let iterator = res
                     .shape
                     .into_iter()
