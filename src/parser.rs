@@ -67,7 +67,7 @@ fn binary_op<'a>() -> Parser<'a, BinOp> {
 }
 
 fn check_reserved(s: String) -> Result<String, String> {
-    let reserved = vec![
+    let reserved = [
         "drop", "rho", "unpack", "pack", "log", "iota", "abs", "rev", "in", "max", "min", "pad",
     ];
 

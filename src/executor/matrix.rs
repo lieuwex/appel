@@ -58,7 +58,7 @@ impl Matrix {
 
                 for i in 0..self.shape[0] {
                     for j in 0..self.shape[1] {
-                        let val = self.get_at(vec![i, j]).unwrap();
+                        let val = self.get_at(&[i, j]).unwrap();
                         write!(&mut writer, "{}\t", fmt.apply(val)).unwrap();
                     }
                     writeln!(writer).unwrap();
@@ -112,7 +112,7 @@ impl Matrix {
     }
 
     // REVIEW: this seems broken
-    pub fn get_at(&self, indices: Vec<usize>) -> Option<&Ratio> {
+    pub fn get_at(&self, indices: &[usize]) -> Option<&Ratio> {
         if indices.len() != self.shape.len() {
             return None;
         }
