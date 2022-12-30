@@ -39,8 +39,8 @@ fn log(base: Ratio, n: Ratio) -> Option<Ratio> {
     res.to_rational()
 }
 
-#[derive(Clone)]
-pub struct Executor {
+pub struct Executor<'a> {
+    previous: Option<&'a Executor<'a>>,
     variables: HashMap<String, Value>,
 }
 
@@ -362,9 +362,18 @@ fn call_binary(op: BinOp, a: Chain, b: Chain) -> Result<ExecutorResult, String> 
     }
 }
 
-impl Executor {
+impl<'a> Executor<'a> {
+    fn get_variable(&self, name: &str) -> Option<&Value> {
+        match (self.variables.get(name), &self.previous) {
+            (Some(v), _) => Some(v),
+            (None, Some(prev)) => prev.get_variable(name),
+            (None, None) => None,
+        }
+    }
+
     pub fn new() -> Self {
         let mut res = Self {
+            previous: None,
             variables: HashMap::new(),
         };
 
@@ -415,11 +424,15 @@ impl Executor {
             ));
         }
 
-        let mut ctx = self.clone();
-        for (param, matrix) in f.params.iter().zip(args) {
-            ctx.variables
-                .insert(param.to_string(), Value::Matrix(matrix));
-        }
+        let mut ctx = Executor {
+            previous: Some(&self),
+            variables: f
+                .params
+                .iter()
+                .zip(args)
+                .map(|(param, matrix)| (param.to_string(), Value::Matrix(matrix)))
+                .collect(),
+        };
 
         ctx.execute_expr(&f.expr)
     }
@@ -637,7 +650,7 @@ impl Executor {
         match op {
             FoldOp::BinOp(op) => apply!(|acc, item| call_binary(op, acc, item)),
 
-            FoldOp::FunctionRef(f) => match self.variables.get(&f) {
+            FoldOp::FunctionRef(f) => match self.get_variable(&f) {
                 None => Err(format!("variable {} not found", f)),
                 Some(v) => match v {
                     Value::Matrix(_) => Err(String::from("variable is a matrix")),
@@ -687,7 +700,7 @@ impl Executor {
         match node {
             Expr::Atom(Atom::Rat(v)) => Ok(Matrix::from(v.clone()).into()),
             Expr::Atom(Atom::Ref(s)) => {
-                let var = match self.variables.get(s) {
+                let var = match self.get_variable(s) {
                     None => return Err(format!("variable {} not found", s)),
                     Some(var) => var.clone(),
                 };
@@ -771,7 +784,7 @@ impl Executor {
 
         macro_rules! err_var_exists {
             ($name:expr, $is_fun:expr) => {
-                let old = self.variables.get(&$name);
+                let old = self.get_variable(&$name);
                 if is_conflict(old, $is_fun) {
                     return Err(format!(
                         "variable {} already exists with different type",

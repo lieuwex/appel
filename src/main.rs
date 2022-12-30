@@ -45,7 +45,7 @@ fn format_res(res: Value, fmt: Formatter) -> String {
 
 struct State {
     formatter: Formatter,
-    exec: Executor,
+    exec: Executor<'static>,
 }
 
 impl State {
