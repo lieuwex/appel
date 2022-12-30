@@ -1,5 +1,6 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::convert::{TryFrom, TryInto};
+use std::iter;
 use std::ops::{Add, Deref, DerefMut, Neg};
 
 use crate::ast::*;
@@ -396,7 +397,11 @@ impl Executor {
         res
     }
 
-    fn call_function(&self, f: &Function, args: Vec<Chain>) -> Result<ExecutorResult, String> {
+    fn call_function(
+        &self,
+        f: &Function,
+        args: impl IntoIterator<Item = Chain>,
+    ) -> Result<ExecutorResult, String> {
         let args: Result<Vec<Matrix>, _> = args.into_iter().map(Matrix::try_from).collect();
         let args = args?;
 
@@ -592,7 +597,9 @@ impl Executor {
                     it.try_fold(
                         ExecutorResult::Chain(Chain::make_scalar(first?)),
                         |acc, item| -> Result<ExecutorResult, String> {
-                            let acc = acc.into_chain()?;
+                            let acc = acc.into_iter_shape()?.scalar().unwrap();
+                            let acc = Chain::make_scalar(acc);
+
                             let item = Chain::make_scalar(item?);
                             $f(acc, item)
                         },
@@ -638,7 +645,7 @@ impl Executor {
                         }
 
                         apply!(|acc, item| {
-                            let args = vec![acc, item];
+                            let args = [acc, item];
                             let res = self.call_function(f, args)?;
                             Ok(res)
                         })
@@ -658,7 +665,7 @@ impl Executor {
         for value in &mut x.values {
             replace_with_or_default_and_return(value, |value| {
                 let res: Result<Rational, String> = (|| {
-                    let res = self.call_function(&f, vec![Chain::make_scalar(value)])?;
+                    let res = self.call_function(&f, iter::once(Chain::make_scalar(value)))?;
                     res.into_iter_shape()?
                         .into_scalar()
                         .ok_or(format!("Function returned non-scalar in map"))
@@ -697,11 +704,7 @@ impl Executor {
 
                 match expressions[0].clone() {
                     Value::Function(f) => {
-                        let mut args = Vec::with_capacity(expressions.len() - 1);
-                        for e in expressions.into_iter().skip(1) {
-                            args.push(Chain::Value(e));
-                        }
-
+                        let args = expressions.into_iter().skip(1).map(Chain::Value);
                         self.call_function(&f, args)
                     }
 
