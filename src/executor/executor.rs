@@ -692,7 +692,7 @@ impl Executor {
 
                 match var {
                     Value::Matrix(m) => Ok(m.into()),
-                    Value::Function(f) => Ok(ExecutorResult::Value(Value::Function(f))),
+                    Value::Function(f) => Ok(f.into()),
                 }
             }
 
@@ -713,15 +713,15 @@ impl Executor {
                             return Ok(first.into());
                         }
 
-                        let values: Result<Vec<_>, String> = expressions
-                            .into_iter()
-                            .map(|e| match Matrix::try_from(e)?.into_scalar() {
+                        let len = expressions.len();
+                        let values = expressions.into_iter().map(|e| {
+                            match Matrix::try_from(e)?.into_scalar() {
                                 None => Err(String::from("nested matrices aren't allowed")),
                                 Some(s) => Ok(s),
-                            })
-                            .collect();
+                            }
+                        });
 
-                        Ok(Matrix::make_vector(values?).into())
+                        Ok(Chain::make_vector(Box::new(values), len).into_result())
                     }
                 }
             }
