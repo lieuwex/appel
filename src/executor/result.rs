@@ -1,4 +1,4 @@
-use std::convert::TryFrom;
+use std::convert::{TryFrom, TryInto};
 
 use crate::ast::Ratio;
 
@@ -22,6 +22,7 @@ impl ExecutorResult {
     pub fn unwrap_value(self) -> Value {
         match self {
             ExecutorResult::Value(v) => v,
+            ExecutorResult::Chain(c) => c.try_into().unwrap(),
             _ => panic!(),
         }
     }
