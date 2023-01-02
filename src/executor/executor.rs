@@ -334,20 +334,18 @@ fn call_binary(op: BinOp, a: Chain, b: Chain) -> Result<ExecutorResult, String> 
             } else {
                 (amount, true)
             };
+            let amount = amount.to_usize().unwrap();
 
-            let values: Result<Vec<_>, String> = b.iterator.collect();
-            let mut values: Vec<_> = values?;
+            let len = b.len() + amount;
 
-            let mut to_add = vec![number; amount.to_usize().unwrap()];
-            if at_start {
-                to_add.append(&mut values);
-                values = to_add;
+            let repeated = iter::repeat(number).take(amount).map(Result::Ok);
+            let values: Box<dyn ValueIter> = if at_start {
+                Box::new(repeated.chain(b.iterator))
             } else {
-                values.append(&mut to_add);
-            }
+                Box::new(b.iterator.chain(repeated))
+            };
 
-            let shape = smallvec![values.len()];
-            Ok(Matrix { values, shape }.into())
+            Ok(Chain::make_vector(values, len).into_result())
         }
 
         BinOp::Map => unreachable!(),
