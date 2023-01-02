@@ -76,6 +76,12 @@ impl From<IterShape> for Chain {
     }
 }
 
+impl From<IterShape> for ExecutorResult {
+    fn from(value: IterShape) -> Self {
+        ExecutorResult::Chain(value.into())
+    }
+}
+
 pub enum Chain {
     Value(Value),
     MatrixIterator {

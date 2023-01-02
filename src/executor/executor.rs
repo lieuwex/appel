@@ -7,6 +7,7 @@ use crate::ast::*;
 use crate::executor::chain::{Chain, IterShape, ValueIter};
 use crate::parser;
 
+use num_bigint::{BigInt, Sign};
 use num_traits::*;
 use replace_with::replace_with_or_default_and_return;
 use rug::{float, Float, Integer, Rational};
@@ -83,15 +84,13 @@ fn call_binary(op: BinOp, a: Chain, b: Chain) -> Result<ExecutorResult, String> 
     let a = a.into_iter_shape()?;
     let b = b.into_iter_shape()?;
 
-    let get_int = |m: Matrix| -> Result<Integer, String> {
-        let s = m
+    let get_int = |v: IterShape| -> Result<Integer, String> {
+        let s = v
             .into_scalar()
             .ok_or_else(|| String::from("expected scalar"))?;
         s.into_integer()
             .ok_or_else(|| String::from("expected integer"))
     };
-
-    let matrix_to_res = |m: Matrix| -> ExecutorResult { ExecutorResult::Value(Value::Matrix(m)) };
 
     macro_rules! apply {
         ($f:expr) => {{
@@ -214,84 +213,75 @@ fn call_binary(op: BinOp, a: Chain, b: Chain) -> Result<ExecutorResult, String> 
         }
 
         BinOp::Unpack => {
-            todo!()
-
-            /*
             let a = get_int(a)?;
+
             let b = get_int(b)?;
+            let b = b.to_string();
+            let b = BigInt::parse_bytes(b.as_bytes(), 10).unwrap();
 
             let radix = a
-                .to_i32()
+                .to_u32()
                 .and_then(|r| if 2 <= r && r <= 256 { Some(r) } else { None })
                 .ok_or(String::from("radix must be greater than or equal to 2"))?;
 
-            let sign = if b.is_negative() { -1 } else { 1 };
-            let bytes: Vec<u8> = {
-                let mut v = Vec::with_capacity(b.significant_digits::<u8>());
-                b.write_digits(&mut v, rug::integer::Order::Msf);
-                v
-            };
+            let (sign, bits) = b.to_radix_be(radix);
 
-            let values: Vec<Ratio> = bytes
+            let values: Vec<Ratio> = bits
                 .into_iter()
                 .map(|b| Ratio::from_u8(b).unwrap())
-                .map(|b| if sign == -1 { b.neg() } else { b })
+                .map(|b| {
+                    if sign == num_bigint::Sign::Minus {
+                        b.neg()
+                    } else {
+                        b
+                    }
+                })
                 .collect();
 
             Ok(Matrix::make_vector(values).into())
-            */
         }
         BinOp::Pack => {
-            todo!()
-
-            /*
             let a = get_int(a)?;
-            let b = {
-                let b = expect_vector(matrix_to_res(b))?;
-                let b: Option<Vec<Integer>> = b.into_iter().map(|b| b.into_integer()).collect();
-                b.ok_or_else(|| "all unpacked values should be integers".to_owned())?
-            };
+
+            let b = expect_vector(b.into())?;
+            let b: Vec<_> = b
+                .into_iter()
+                .map(|v| {
+                    let (numer, denom) = v.into_numer_denom();
+
+                    let numer = numer.to_string();
+                    let numer = BigInt::parse_bytes(numer.as_bytes(), 10).unwrap();
+
+                    let denom = denom.to_string();
+                    let denom = BigInt::parse_bytes(denom.as_bytes(), 10).unwrap();
+
+                    num_rational::BigRational::new_raw(numer, denom)
+                })
+                .collect();
 
             let radix = a
-                .to_i32()
-                // check variant a
+                .to_u32()
                 .and_then(|r| if 2 <= r && r <= 256 { Some(r) } else { None })
                 .ok_or(String::from("radix must be greater than or equal to 2"))?;
 
-            let is_negative = b.iter().any(|b| b.is_negative());
-            let bytes: Vec<u8> = b.into_iter().map(|b| b.to_u8().unwrap()).collect();
-
-            // check variant b
-            if let Some((idx, val)) = bytes
-                .iter()
-                .enumerate()
-                .find(|(_, &x)| !(0 < x && (x as i32) < radix))
-            {
-                return Err(format!(
-                    "Value at index {idx} is out-of-bounds, value is {val}, radix is {radix}"
-                ));
-            }
-
-            let packed = {
-                let mut res = Integer::new();
-
-                // SAFETY: assign_bytes_radix_unchecked assumes two things:
-                // (a) 2 <= radix <= 256
-                // (b) all bytes are 0 <= x < radix
-                // We check both.
-                unsafe {
-                    res.assign_bytes_radix_unchecked(&bytes, radix, is_negative);
-                }
-
-                if is_negative {
-                    res.neg()
-                } else {
-                    res
-                }
+            let sign = if b.iter().any(|b| b.to_integer().sign() == Sign::Minus) {
+                Sign::Minus
+            } else {
+                Sign::Plus
             };
 
-            Ok(Matrix::from(Ratio::from(packed)).into())
-            */
+            let bits: Vec<u8> = b.iter().map(|b| b.to_integer().to_u8().unwrap()).collect();
+
+            let packed = BigInt::from_radix_be(sign, &bits, radix);
+            let int = match packed {
+                None => return Err(String::from("couldn't convert bits to int")),
+                Some(i) => i,
+            };
+
+            let int = int.to_string();
+            let int = Integer::from_str_radix(&int, 10).unwrap();
+
+            Ok(Matrix::from(Ratio::from(int)).into())
         }
 
         BinOp::In => {
