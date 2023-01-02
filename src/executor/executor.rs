@@ -310,10 +310,15 @@ fn call_binary(op: BinOp, a: Chain, b: Chain) -> Result<ExecutorResult, String> 
         BinOp::Min => apply_ok!(|a: Ratio, b: Ratio| if b < a { b } else { a }),
 
         BinOp::Pad => {
-            let a = Matrix::try_from(a)?;
-            let a = expect_vector(ExecutorResult::Value(Value::Matrix(a)))?;
+            let a = expect_vector(a.into())?;
             if a.len() != 2 {
                 return Err(format!("expected 2 arguments on the left, got {}", a.len()));
+            }
+            if !b.is_vector() {
+                return Err(format!(
+                    "expected vector on the right, got an {}-dimensional shape instead",
+                    b.shape.len()
+                ));
             }
 
             let mut it = a.into_iter();
@@ -341,11 +346,8 @@ fn call_binary(op: BinOp, a: Chain, b: Chain) -> Result<ExecutorResult, String> 
                 values.append(&mut to_add);
             }
 
-            Ok(Matrix {
-                values,
-                shape: b.shape,
-            }
-            .into())
+            let shape = smallvec![values.len()];
+            Ok(Matrix { values, shape }.into())
         }
 
         BinOp::Map => unreachable!(),

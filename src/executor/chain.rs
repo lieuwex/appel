@@ -49,6 +49,10 @@ impl IterShape {
             None
         }
     }
+
+    pub fn is_vector(&self) -> bool {
+        matches!(self.shape.len(), 0 | 1)
+    }
 }
 
 impl TryFrom<IterShape> for Matrix {
