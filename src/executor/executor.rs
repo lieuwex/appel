@@ -53,7 +53,7 @@ fn expect_vector(v: ExecutorResult) -> Result<Vec<Ratio>, String> {
     }
 }
 fn expect_scalar(v: ExecutorResult) -> Result<Ratio, String> {
-    match Matrix::try_from(v)?.into_scalar() {
+    match v.into_iter_shape()?.into_scalar() {
         None => Err(String::from("expected scalar")),
         Some(s) => Ok(s),
     }
