@@ -322,30 +322,32 @@ fn call_binary(op: BinOp, a: Chain, b: Chain) -> Result<ExecutorResult, String> 
             }
 
             let mut it = a.into_iter();
-            let amount = it
+            let new_len = it
                 .next()
                 .unwrap()
                 .into_integer()
-                .expect("amount must be an integer");
-            let number = it.next().unwrap();
+                .ok_or_else(|| "new length must be an integer".to_owned())?;
+            let value = it.next().unwrap();
 
-            let (amount, at_start) = if (&amount).signum() == -1 {
-                (amount.neg(), false)
+            let (new_len, at_start) = if (&new_len).signum() == -1 {
+                (new_len.neg(), false)
             } else {
-                (amount, true)
+                (new_len, true)
             };
-            let amount = amount.to_usize().unwrap();
+            let new_len = new_len.to_usize().unwrap();
 
-            let len = b.len() + amount;
+            let amount = new_len.checked_sub(b.shape.len()).ok_or_else(|| {
+                "vector on the right is longer than the wanted padded length".to_owned()
+            })?;
 
-            let repeated = iter::repeat(number).take(amount).map(Result::Ok);
+            let repeated = iter::repeat(value).take(amount).map(Result::Ok);
             let values: Box<dyn ValueIter> = if at_start {
                 Box::new(repeated.chain(b.iterator))
             } else {
                 Box::new(b.iterator.chain(repeated))
             };
 
-            Ok(Chain::make_vector(values, len).into_result())
+            Ok(Chain::make_vector(values, new_len).into_result())
         }
 
         BinOp::Map => unreachable!(),
