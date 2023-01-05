@@ -226,19 +226,20 @@ fn call_binary(op: BinOp, a: Chain, b: Chain) -> Result<ExecutorResult, String> 
 
             let (sign, bits) = b.to_radix_be(radix);
 
-            let values: Vec<Ratio> = bits
+            let len = bits.len();
+            let values = bits
                 .into_iter()
                 .map(|b| Ratio::from_u8(b).unwrap())
-                .map(|b| {
+                .map(move |b| {
                     if sign == num_bigint::Sign::Minus {
                         b.neg()
                     } else {
                         b
                     }
                 })
-                .collect();
+                .map(Result::Ok);
 
-            Ok(Matrix::make_vector(values).into())
+            Ok(Chain::make_vector(Box::new(values), len).into_result())
         }
         BinOp::Pack => {
             let a = get_int(a)?;
