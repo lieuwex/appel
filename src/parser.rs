@@ -281,9 +281,38 @@ fn p_expr_2<'a>() -> Parser<'a, Expr> {
         })
 }
 
-/// Vector of atom-like things
+/// Binary comparison operators
 fn p_expr_3<'a>() -> Parser<'a, Expr> {
-    list(call(p_expr_2), whitespace(1))
+    left_recurse(
+        p_expr_2,
+        symbol_both(comp_op()),
+        p_expr_2,
+        "binary comparison",
+        |e1, op, e2| Expr::Binary(Box::new(e1), BinOp::CompOp(op), Box::new(e2)),
+    )
+}
+
+/// Power (**) of unary'd vector
+fn p_expr_4<'a>() -> Parser<'a, Expr> {
+    let op_p = symbol_both(operator("**")).map(|_| BinOp::Pow);
+    right_recurse(p_expr_3, op_p, p_expr_4, "power", |e1, op, e2| {
+        Expr::Binary(Box::new(e1), op, Box::new(e2))
+    })
+}
+
+/// Product (*, /, %) of powers
+fn p_expr_5<'a>() -> Parser<'a, Expr> {
+    let op_p = symbol_both(operator("*")).map(|_| BinOp::Mul)
+        | symbol_both(operator("/")).map(|_| BinOp::Div)
+        | symbol_both(operator("%")).map(|_| BinOp::Mod);
+    left_recurse(p_expr_4, op_p, p_expr_4, "product", |e1, op, e2| {
+        Expr::Binary(Box::new(e1), op, Box::new(e2))
+    })
+}
+
+/// Vector of atom-like things
+fn p_expr_6<'a>() -> Parser<'a, Expr> {
+    list(call(p_expr_5), whitespace(1))
         .convert(|v| match v.len() {
             0 => Err(String::from("expected non-empty vector")),
             1 => Ok(v.into_iter().next().unwrap()),
@@ -292,18 +321,7 @@ fn p_expr_3<'a>() -> Parser<'a, Expr> {
         .name("vector")
 }
 
-/// Binary comparison operators
-fn p_expr_4<'a>() -> Parser<'a, Expr> {
-    left_recurse(
-        p_expr_3,
-        symbol_both(comp_op()),
-        p_expr_3,
-        "binary comparison",
-        |e1, op, e2| Expr::Binary(Box::new(e1), BinOp::CompOp(op), Box::new(e2)),
-    )
-}
-
-fn p_expr_5<'a>() -> Parser<'a, Expr> {
+fn p_expr_7<'a>() -> Parser<'a, Expr> {
     let op_un = symbol_both(operator("iota")).map(|_| UnOp::Iota)
         | symbol_both(operator("abs")).map(|_| UnOp::Abs)
         | symbol_both(operator("rho")).map(|_| UnOp::Rho)
@@ -312,31 +330,13 @@ fn p_expr_5<'a>() -> Parser<'a, Expr> {
         | symbol_both(operator("down")).map(|_| UnOp::Down)
         | symbol_both(operator("sgn")).map(|_| UnOp::Sign);
 
-    (op_un.repeat(0..) + call(p_expr_4))
+    (op_un.repeat(0..) + call(p_expr_6))
         .map(|(ops, ex)| {
             ops.into_iter()
                 .rev()
                 .fold(ex, |acc, op| Expr::Unary(op, Box::new(acc)))
         })
         .name("special unary")
-}
-
-/// Power (**) of unary'd vector
-fn p_expr_6<'a>() -> Parser<'a, Expr> {
-    let op_p = symbol_both(operator("**")).map(|_| BinOp::Pow);
-    right_recurse(p_expr_5, op_p, p_expr_6, "power", |e1, op, e2| {
-        Expr::Binary(Box::new(e1), op, Box::new(e2))
-    })
-}
-
-/// Product (*, /, %) of powers
-fn p_expr_7<'a>() -> Parser<'a, Expr> {
-    let op_p = symbol_both(operator("*")).map(|_| BinOp::Mul)
-        | symbol_both(operator("/")).map(|_| BinOp::Div)
-        | symbol_both(operator("%")).map(|_| BinOp::Mod);
-    left_recurse(p_expr_6, op_p, p_expr_6, "product", |e1, op, e2| {
-        Expr::Binary(Box::new(e1), op, Box::new(e2))
-    })
 }
 
 /// Sum (+, -) of products
