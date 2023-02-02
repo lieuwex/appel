@@ -645,20 +645,18 @@ impl<'a> Executor<'a> {
 
             FoldOp::FunctionRef(f) => match self.get_variable(&f) {
                 None => Err(format!("variable {} not found", f)),
-                Some(v) => match v {
-                    Value::Matrix(_) => Err(String::from("variable is a matrix")),
-                    Value::Function(f) => {
-                        if f.params.len() != 2 {
-                            return Err(String::from("function does not take 2 params"));
-                        }
-
-                        apply!(|acc, item| {
-                            let args = [acc, item];
-                            let res = self.call_function(f, args)?;
-                            Ok(res)
-                        })
+                Some(Value::Matrix(_)) => Err(String::from("variable is a matrix")),
+                Some(Value::Function(f)) => {
+                    if f.params.len() != 2 {
+                        return Err(String::from("function does not take 2 params"));
                     }
-                },
+
+                    apply!(|acc, item| {
+                        let args = [acc, item];
+                        let res = self.call_function(f, args)?;
+                        Ok(res)
+                    })
+                }
             },
         }
     }
@@ -769,10 +767,8 @@ impl<'a> Executor<'a> {
     pub fn execute(&mut self, node: Statement, remember: bool) -> Result<ExecutorResult, String> {
         let is_conflict = |old: Option<&Value>, new_is_fun: bool| match old {
             None => false,
-            Some(old) => match old {
-                Value::Matrix(_) => new_is_fun,
-                Value::Function(_) => !new_is_fun,
-            },
+            Some(Value::Matrix(_)) => new_is_fun,
+            Some(Value::Function(_)) => !new_is_fun,
         };
 
         macro_rules! err_var_exists {
