@@ -143,7 +143,7 @@ fn call_binary(op: BinOp, a: Chain, b: Chain) -> Result<ExecutorResult, String> 
         BinOp::Sub => apply_ok!(|a, b| a - b),
         BinOp::Mul => apply_ok!(|a, b| a * b),
         BinOp::Div => apply_ok!(|a, b| a / b),
-        BinOp::Mod => apply_ok!(|a: Ratio, b: Ratio| (a / b).rem_trunc()),
+        BinOp::Mod => apply_ok!(|a: Ratio, b: Ratio| (a / &b).rem_trunc() * b),
         BinOp::Pow => {
             apply!(|a, b| pow(a, b).ok_or_else(|| "error while converting to i32".to_owned()))
         }
