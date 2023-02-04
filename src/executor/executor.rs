@@ -117,15 +117,16 @@ fn call_binary(op: BinOp, a: Chain, b: Chain) -> Result<ExecutorResult, String> 
             };
 
             let matrix = Chain::MatrixIterator {
-                iterator: Box::new(non_scalar.iterator.map(Result::unwrap).map(
-                    move |v: Rational| {
+                iterator: Box::new(non_scalar.iterator.map(move |v| {
+                    let scalar = scalar.clone();
+                    v.and_then(|v: Rational| {
                         if scalar_is_left {
-                            $f(scalar.clone(), v).map(Ratio::from)
+                            $f(scalar, v).map(Ratio::from)
                         } else {
-                            $f(v, scalar.clone()).map(Ratio::from)
+                            $f(v, scalar).map(Ratio::from)
                         }
-                    },
-                )),
+                    })
+                })),
                 shape: non_scalar.shape,
             };
 
@@ -197,8 +198,7 @@ fn call_binary(op: BinOp, a: Chain, b: Chain) -> Result<ExecutorResult, String> 
         BinOp::Rho => {
             let shape: SmallVec<[usize; 4]> = a
                 .iterator
-                .map(Result::unwrap)
-                .map(|v| to_usize_error(&v))
+                .map(|v| v.and_then(|v| to_usize_error(&v)))
                 .collect::<Result<_, String>>()?;
 
             let values = std::iter::repeat(b.iterator)
@@ -288,17 +288,15 @@ fn call_binary(op: BinOp, a: Chain, b: Chain) -> Result<ExecutorResult, String> 
         BinOp::In => {
             let base_set: Result<HashSet<Ratio>, String> = b.iterator.collect();
             let base_set = base_set?;
-            let values = a
-                .iterator
-                .map(Result::unwrap)
-                .map(move |x| {
+            let values = a.iterator.map(move |x| {
+                x.map(|x| {
                     if base_set.contains(&x) {
                         Ratio::one()
                     } else {
                         Ratio::zero()
                     }
                 })
-                .map(Result::Ok);
+            });
 
             Ok(Chain::MatrixIterator {
                 iterator: Box::new(values),
@@ -613,7 +611,8 @@ impl<'a> Executor<'a> {
                         },
                     )
                 } else {
-                    let items: Vec<Ratio> = iter_shape.iterator.map(Result::unwrap).collect();
+                    let items: Result<Vec<Ratio>, _> = iter_shape.iterator.collect();
+                    let items = items?;
                     let mut accum = vec![items[0].clone()];
 
                     let mut i = 1;
