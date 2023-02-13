@@ -2,7 +2,6 @@ mod ast;
 mod executor;
 mod parser;
 
-use std::convert::TryInto;
 use std::fs;
 use std::io::BufRead;
 
@@ -10,38 +9,7 @@ use clap::{App, Arg};
 use executor::chain::Chain;
 
 use crate::executor::matrix::Formatter;
-use crate::executor::{Executor, ExecutorResult, Value};
-
-fn format_chain(res: Chain, fmt: Formatter) -> Result<String, String> {
-    let res = match res {
-        Chain::Value(v) => format_res(v, fmt),
-        Chain::MatrixIterator { iterator, shape } => {
-            let n_dimensions = shape.len();
-            match n_dimensions {
-                2 => format_res(Chain::MatrixIterator { iterator, shape }.try_into()?, fmt),
-                _ => iterator
-                    .enumerate()
-                    .map(|(i, val)| {
-                        let val = fmt.apply(&val?);
-                        if i > 0 {
-                            Ok(format!(" {}", val))
-                        } else {
-                            Ok(val)
-                        }
-                    })
-                    .collect::<Result<String, String>>()?,
-            }
-        }
-    };
-    Ok(res)
-}
-
-fn format_res(res: Value, fmt: Formatter) -> String {
-    match res {
-        Value::Function(f) => format!("{}", f),
-        Value::Matrix(m) => m.format(fmt),
-    }
-}
+use crate::executor::{Executor, ExecutorResult};
 
 struct State {
     formatter: Formatter,
@@ -69,8 +37,8 @@ impl State {
         let res = match self.exec.execute(parsed, true) {
             Err(e) => Err(format!("error while executing: {}", e)),
             Ok(ExecutorResult::None) => Ok(String::new()),
-            Ok(ExecutorResult::Chain(c)) => Ok(format_chain(c, self.formatter)?),
-            Ok(ExecutorResult::Value(res)) => Ok(format_res(res, self.formatter)),
+            Ok(ExecutorResult::Chain(c)) => c.format(self.formatter),
+            Ok(ExecutorResult::Value(res)) => Chain::Value(res).format(self.formatter),
             Ok(ExecutorResult::Info(s)) => Ok(s),
             Ok(ExecutorResult::Setting(key, val)) => {
                 match key.to_ascii_lowercase().as_str() {

@@ -1,13 +1,14 @@
-use std::{backtrace::Backtrace, borrow::Borrow, convert::TryFrom};
+use std::{backtrace::Backtrace, convert::TryFrom};
 
 use crate::ast::Ratio;
 
-use super::{function::Function, matrix::Matrix, ExecutorResult, Value};
-
-use dyn_clonable::{
-    dyn_clone::{clone, clone_box},
-    *,
+use super::{
+    function::Function,
+    matrix::{Formatter, Matrix},
+    ExecutorResult, Value,
 };
+
+use dyn_clonable::{dyn_clone::clone_box, *};
 use smallvec::{smallvec, SmallVec};
 
 #[clonable]
@@ -116,6 +117,31 @@ impl Chain {
 
     pub fn into_result(self) -> ExecutorResult {
         ExecutorResult::Chain(self)
+    }
+
+    pub fn format(self, fmt: Formatter) -> Result<String, String> {
+        let res = match self {
+            Chain::Value(Value::Function(f)) => format!("{}", f),
+            Chain::Value(Value::Matrix(m)) => m.format(fmt),
+            Chain::MatrixIterator { iterator, shape } => {
+                let n_dimensions = shape.len();
+                match n_dimensions {
+                    2 => Matrix::try_from(Chain::MatrixIterator { iterator, shape })?.format(fmt),
+                    _ => iterator
+                        .enumerate()
+                        .map(|(i, val)| {
+                            let val = fmt.apply(&val?);
+                            if i > 0 {
+                                Ok(format!(" {}", val))
+                            } else {
+                                Ok(val)
+                            }
+                        })
+                        .collect::<Result<String, String>>()?,
+                }
+            }
+        };
+        Ok(res)
     }
 }
 
