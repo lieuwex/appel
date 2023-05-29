@@ -516,7 +516,7 @@ impl<'a> Executor<'a> {
             UnOp::Rho => {
                 let res = res.into_iter_shape()?;
 
-                let new_shape = smallvec![res.len()];
+                let new_shape = smallvec![res.shape.len()];
                 let iterator = res
                     .shape
                     .into_iter()
