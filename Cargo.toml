@@ -4,6 +4,10 @@ version = "0.1.0"
 authors = ["Lieuwe Rooijakkers <lieuwerooijakkers@gmail.com>", "Tom Smeding <tom.smeding@gmail.com>"]
 edition = "2018"
 
+[profile.release]
+debug = true
+lto = true
+
 [dependencies]
 pom = "^3.1"
 rand = "0.8"
