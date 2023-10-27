@@ -487,14 +487,14 @@ impl<'a> Executor<'a> {
             UnOp::Ceil => for_all_ok!(|x: Ratio| x.ceil()),
             UnOp::Abs => for_all_ok!(|x: Ratio| x.abs()),
             UnOp::Sin | UnOp::Cos | UnOp::Tan => for_all!(move |x: Ratio| {
-                let f = x.to_f64();
+                let f = Float::new(FLOAT_PRECISION).add(x);
                 let res = match op {
                     UnOp::Sin => f.sin(),
                     UnOp::Cos => f.cos(),
                     UnOp::Tan => f.tan(),
                     _ => unreachable!(),
                 };
-                Ratio::from_f64(res).ok_or_else(|| "invalid result".to_owned())
+                res.to_rational().ok_or_else(|| "invalid result".to_owned())
             }),
             UnOp::Sign => for_all_ok!(|x: Ratio| x.signum()),
 
