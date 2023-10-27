@@ -23,10 +23,6 @@ use super::value::Value;
 
 const FLOAT_PRECISION: u32 = 100;
 
-pub fn to_f64(val: &Ratio) -> Option<f64> {
-    Some(val.to_f64())
-}
-
 fn pow(a: Ratio, b: Ratio) -> Option<Ratio> {
     let b = b.to_i32()?;
     let res = a.pow(b);
@@ -95,8 +91,7 @@ fn call_binary(op: BinOp, a: Chain, b: Chain) -> Result<ExecutorResult, String> 
     macro_rules! apply {
         ($f:expr) => {{
             if a.shape == b.shape {
-                let values = a
-                    .iterator
+                let values = (a.iterator)
                     .zip(b.iterator)
                     .map(|(a, b)| (a.unwrap(), b.unwrap()))
                     .map(move |(a, b): (Rational, Rational)| $f(a, b).map(Ratio::from));
@@ -262,7 +257,7 @@ fn call_binary(op: BinOp, a: Chain, b: Chain) -> Result<ExecutorResult, String> 
 
             let radix = a
                 .to_u32()
-                .and_then(|r| if 2 <= r && r <= 256 { Some(r) } else { None })
+                .filter(|&r| 2 <= r && r <= 256)
                 .ok_or(String::from("radix must be greater than or equal to 2"))?;
 
             let sign = if b.iter().any(|b| b.to_integer().sign() == Sign::Minus) {
@@ -492,7 +487,7 @@ impl<'a> Executor<'a> {
             UnOp::Ceil => for_all_ok!(|x: Ratio| x.ceil()),
             UnOp::Abs => for_all_ok!(|x: Ratio| x.abs()),
             UnOp::Sin | UnOp::Cos | UnOp::Tan => for_all!(move |x: Ratio| {
-                let f = to_f64(&x).ok_or_else(|| "couldn't convert fo f64".to_owned())?;
+                let f = x.to_f64();
                 let res = match op {
                     UnOp::Sin => f.sin(),
                     UnOp::Cos => f.cos(),
@@ -816,18 +811,13 @@ impl<'a> Executor<'a> {
                     let s = Matrix::try_from(res)?
                         .values
                         .iter()
-                        .map(|x| (to_f64(x), x))
+                        .map(|x| x.to_f64())
                         .enumerate()
-                        .map(|(i, (val, orig))| {
-                            let s = match val {
-                                None => format!("{}", orig),
-                                Some(f) => format!("{}", f),
-                            };
-
+                        .map(|(i, val)| {
                             if i == 0 {
-                                s
+                                format!("{}", val)
                             } else {
-                                format!(" {}", s)
+                                format!(" {}", val)
                             }
                         })
                         .collect::<Vec<String>>()

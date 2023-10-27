@@ -1,4 +1,3 @@
-use super::executor::to_f64;
 use super::result::ExecutorResult;
 use super::value::Value;
 use crate::ast::*;
@@ -22,18 +21,12 @@ impl Formatter {
         }
 
         match self {
-            Formatter::Float(None) => match to_f64(rat) {
-                None => format!("{}", rat),
-                Some(f) => {
-                    let mut buf: Vec<u8> = vec![];
-                    dtoa::write(&mut buf, f).unwrap();
-                    String::from_utf8(buf).unwrap()
-                }
-            },
-            Formatter::Float(Some(precision)) => match to_f64(rat) {
-                None => format!("{}", rat),
-                Some(f) => format!("{1:.0$}", precision, f),
-            },
+            Formatter::Float(None) => {
+                let mut buf: Vec<u8> = vec![];
+                dtoa::write(&mut buf, rat.to_f64()).unwrap();
+                String::from_utf8(buf).unwrap()
+            }
+            Formatter::Float(Some(precision)) => format!("{1:.0$}", precision, rat.to_f64()),
             Formatter::Ratio => format!("{}", rat),
         }
     }
