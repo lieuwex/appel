@@ -1,10 +1,7 @@
-use std::convert::{TryFrom, TryInto};
-
-use crate::ast::Ratio;
+use std::convert::TryInto;
 
 use super::{
-    chain::{Chain, IterShape, ValueIter},
-    matrix::Matrix,
+    chain::{Chain, IterShape},
     value::Value,
 };
 

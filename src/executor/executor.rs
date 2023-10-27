@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::convert::{TryFrom, TryInto};
 use std::iter;
-use std::ops::{Add, Deref, DerefMut, Neg};
+use std::ops::{Add, Neg};
 
 use crate::ast::*;
 use crate::executor::chain::{Chain, IterShape, ValueIter};
@@ -10,7 +10,7 @@ use crate::parser;
 use num_bigint::{BigInt, Sign};
 use num_traits::*;
 use replace_with::replace_with_or_default_and_return;
-use rug::{float, Float, Integer, Rational};
+use rug::{Float, Integer, Rational};
 
 use rand::prelude::*;
 
@@ -23,17 +23,20 @@ use super::value::Value;
 
 const FLOAT_PRECISION: u32 = 100;
 
-fn pow(a: Ratio, b: Ratio) -> Option<Ratio> {
-    let b = b.to_i32()?;
-    let res = a.pow(b);
-    return Some(Ratio::from(res));
+fn pow(a: Ratio, b: Ratio) -> Result<Ratio, String> {
+    let b = b
+        .to_i32()
+        .ok_or_else(|| "error while converting to i32".to_owned())?;
+
+    Ok(Ratio::from(a.pow(b)))
 }
-fn log(base: Ratio, n: Ratio) -> Option<Ratio> {
+fn log(base: Ratio, n: Ratio) -> Result<Ratio, String> {
     let base = Float::new(FLOAT_PRECISION).add(base);
     let n = Float::new(FLOAT_PRECISION).add(n);
 
     let res = n.log2() / base.log2();
     res.to_rational()
+        .ok_or_else(|| "result is not finite".to_owned())
 }
 
 pub struct Executor<'a> {
@@ -140,10 +143,8 @@ fn call_binary(op: BinOp, a: Chain, b: Chain) -> Result<ExecutorResult, String> 
         BinOp::Mul => apply_ok!(|a, b| a * b),
         BinOp::Div => apply_ok!(|a, b| a / b),
         BinOp::Mod => apply_ok!(|a: Ratio, b: Ratio| (a / &b).rem_trunc() * b),
-        BinOp::Pow => {
-            apply!(|a, b| pow(a, b).ok_or_else(|| "error while converting to i32".to_owned()))
-        }
-        BinOp::Log => apply!(|a, b| log(a, b).ok_or_else(|| "result is not finite".to_owned())),
+        BinOp::Pow => apply!(|a, b| pow(a, b)),
+        BinOp::Log => apply!(|a, b| log(a, b)),
         BinOp::CompOp(x) => apply_ok!(get_comp_op_fn(x)),
 
         BinOp::Concat => {
@@ -300,8 +301,8 @@ fn call_binary(op: BinOp, a: Chain, b: Chain) -> Result<ExecutorResult, String> 
             .into_result())
         }
 
-        BinOp::Max => apply_ok!(|a: Ratio, b: Ratio| if b > a { b } else { a }),
-        BinOp::Min => apply_ok!(|a: Ratio, b: Ratio| if b < a { b } else { a }),
+        BinOp::Max => apply_ok!(|a: Ratio, b: Ratio| a.max(b)),
+        BinOp::Min => apply_ok!(|a: Ratio, b: Ratio| a.min(b)),
 
         BinOp::Pad => {
             let a = expect_vector(a.into())?;
@@ -450,7 +451,7 @@ impl<'a> Executor<'a> {
             UnOp::Id => Ok(res),
             UnOp::Neg => for_all_ok!(|x: Ratio| x.neg()),
             UnOp::Not => for_all_ok!(|x: Ratio| {
-                if x == Ratio::zero() {
+                if x.is_zero() {
                     Ratio::one()
                 } else {
                     Ratio::zero()

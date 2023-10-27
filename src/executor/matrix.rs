@@ -90,19 +90,12 @@ impl Matrix {
     }
 
     pub fn scalar(&self) -> Option<&Ratio> {
-        if self.is_scalar() {
-            Some(&self.values[0])
-        } else {
-            None
-        }
+        self.is_scalar().then(|| &self.values[0])
     }
 
     pub fn into_scalar(self) -> Option<Ratio> {
-        if self.is_scalar() {
-            Some(self.values.into_iter().nth(0).unwrap())
-        } else {
-            None
-        }
+        self.is_scalar()
+            .then(|| self.values.into_iter().nth(0).unwrap())
     }
 
     // REVIEW: this seems broken

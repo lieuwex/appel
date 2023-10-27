@@ -32,22 +32,18 @@ impl IterShape {
     }
 
     pub fn scalar(&self) -> Option<Ratio> {
-        if self.is_scalar() {
+        self.is_scalar().then(|| {
+            // TODO: optimize
             let mut i = self.iterator.clone();
-            // TODO
-            Some(i.next().unwrap().unwrap())
-        } else {
-            None
-        }
+            i.next().unwrap().unwrap()
+        })
     }
 
     pub fn into_scalar(mut self) -> Option<Ratio> {
-        if self.is_scalar() {
+        self.is_scalar().then(|| {
             // TODO
-            Some(self.iterator.next().unwrap().unwrap())
-        } else {
-            None
-        }
+            self.iterator.next().unwrap().unwrap()
+        })
     }
 
     pub fn is_vector(&self) -> bool {
@@ -142,7 +138,7 @@ impl TryFrom<Chain> for Matrix {
     fn try_from(chain: Chain) -> Result<Self, Self::Error> {
         let chain = Value::try_from(chain)?;
         match chain {
-            Value::Function(f) => Err(String::from("expected matrix, got a function")),
+            Value::Function(_) => Err(String::from("expected matrix, got a function")),
             Value::Matrix(m) => Ok(m),
         }
     }

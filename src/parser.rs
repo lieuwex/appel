@@ -3,7 +3,7 @@ use crate::ast::*;
 use pom::{self, parser::*};
 
 use num_traits::*;
-use rug::{integer::ParseIntegerError, ops::Pow, rational::ParseRationalError, Integer, Rational};
+use rug::{integer::ParseIntegerError, ops::Pow, Integer, Rational};
 
 type Parser<'a, T> = pom::parser::Parser<'a, char, T>;
 
