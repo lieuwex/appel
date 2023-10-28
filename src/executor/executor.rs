@@ -91,49 +91,57 @@ fn call_binary(op: BinOp, a: Chain, b: Chain) -> Result<ExecutorResult, String> 
             .ok_or_else(|| String::from("expected integer"))
     };
 
-    macro_rules! apply {
-        ($f:expr) => {{
-            if a.shape == b.shape {
-                let values = (a.iterator)
-                    .zip(b.iterator)
-                    .map(|(a, b)| (a.unwrap(), b.unwrap()))
-                    .map(move |(a, b): (Rational, Rational)| $f(a, b).map(Ratio::from));
-
-                let matrix = Chain::MatrixIterator {
-                    iterator: Box::new(values),
-                    shape: a.shape,
-                };
-                return Ok(matrix.into_result());
-            }
-
-            let (scalar, non_scalar, scalar_is_left) = if let Some(s) = a.scalar() {
-                (s, b, true)
-            } else if let Some(s) = b.scalar() {
-                (s, a, false)
-            } else {
-                return Err(String::from("rank mismatch"));
-            };
+    fn apply(
+        a: IterShape,
+        b: IterShape,
+        f: impl Fn(Rational, Rational) -> Result<Rational, String> + Clone + 'static,
+    ) -> Result<ExecutorResult, String> {
+        if a.shape == b.shape {
+            let values = (a.iterator)
+                .zip(b.iterator)
+                .map(|(a, b)| (a.unwrap(), b.unwrap()))
+                .map(move |(a, b): (Rational, Rational)| f(a, b).map(Ratio::from));
 
             let matrix = Chain::MatrixIterator {
-                iterator: Box::new(non_scalar.iterator.map(move |v| {
-                    let scalar = scalar.clone();
-                    v.and_then(|v: Rational| {
-                        if scalar_is_left {
-                            $f(scalar, v).map(Ratio::from)
-                        } else {
-                            $f(v, scalar).map(Ratio::from)
-                        }
-                    })
-                })),
-                shape: non_scalar.shape,
+                iterator: Box::new(values),
+                shape: a.shape,
             };
+            return Ok(matrix.into_result());
+        }
 
-            Ok(matrix.into_result())
-        }};
+        let (scalar, non_scalar, scalar_is_left) = if let Some(s) = a.scalar() {
+            (s, b, true)
+        } else if let Some(s) = b.scalar() {
+            (s, a, false)
+        } else {
+            return Err(String::from("rank mismatch"));
+        };
+
+        let matrix = Chain::MatrixIterator {
+            iterator: Box::new(non_scalar.iterator.map(move |v| {
+                let scalar = scalar.clone();
+                v.and_then(|v: Rational| {
+                    if scalar_is_left {
+                        f(scalar, v).map(Ratio::from)
+                    } else {
+                        f(v, scalar).map(Ratio::from)
+                    }
+                })
+            })),
+            shape: non_scalar.shape,
+        };
+
+        Ok(matrix.into_result())
+    }
+
+    macro_rules! apply {
+        ($f:expr) => {
+            apply(a, b, $f)
+        };
     }
     macro_rules! apply_ok {
         ($f:expr) => {
-            apply!(|a, b| Ok($f(a, b)))
+            apply!(move |a, b| Ok($f(a, b)))
         };
     }
 
@@ -589,50 +597,57 @@ impl<'a> Executor<'a> {
             return Err(String::from("matrix must have at least 1 value"));
         }
 
-        macro_rules! apply {
-            ($f:expr) => {{
-                if is_fold {
-                    let mut it = iter_shape.iterator;
-                    let first = it.next().unwrap();
+        fn apply(
+            iter_shape: IterShape,
+            is_fold: bool,
+            f: impl Fn(Chain, Chain) -> Result<ExecutorResult, String>,
+        ) -> Result<ExecutorResult, String> {
+            if is_fold {
+                let mut it = iter_shape.iterator;
+                let first = it.next().unwrap();
 
-                    // fold
-                    it.try_fold(
-                        ExecutorResult::Chain(Chain::make_scalar(first?)),
-                        |acc, item| -> Result<ExecutorResult, String> {
-                            let acc = acc.into_iter_shape()?.scalar().unwrap();
-                            let acc = Chain::make_scalar(acc);
+                // fold
+                it.try_fold(
+                    ExecutorResult::Chain(Chain::make_scalar(first?)),
+                    |acc, item| -> Result<ExecutorResult, String> {
+                        let acc = acc.into_iter_shape()?.scalar().unwrap();
+                        let acc = Chain::make_scalar(acc);
 
-                            let item = Chain::make_scalar(item?);
-                            $f(acc, item)
-                        },
-                    )
-                } else {
-                    let items: Result<Vec<Ratio>, _> = iter_shape.iterator.collect();
-                    let items = items?;
-                    let mut accum = vec![items[0].clone()];
+                        let item = Chain::make_scalar(item?);
+                        f(acc, item)
+                    },
+                )
+            } else {
+                let items: Result<Vec<Ratio>, _> = iter_shape.iterator.collect();
+                let items = items?;
+                let mut accum = vec![items[0].clone()];
 
-                    let mut i = 1;
-                    loop {
-                        if i >= items.len() {
-                            break Ok(Matrix {
-                                values: accum,
-                                shape: iter_shape.shape,
-                            }
-                            .into());
+                let mut i = 1;
+                loop {
+                    if i >= items.len() {
+                        break Ok(Matrix {
+                            values: accum,
+                            shape: iter_shape.shape,
                         }
-
-                        let prev = Chain::make_scalar(accum[i - 1].clone());
-                        let curr = Chain::make_scalar(items[i].clone());
-
-                        match $f(prev, curr) {
-                            e @ Err(_) => break e,
-                            Ok(res) => accum.push(expect_scalar(res)?),
-                        };
-
-                        i += 1;
+                        .into());
                     }
+
+                    let prev = Chain::make_scalar(accum[i - 1].clone());
+                    let curr = Chain::make_scalar(items[i].clone());
+
+                    match f(prev, curr) {
+                        e @ Err(_) => break e,
+                        Ok(res) => accum.push(expect_scalar(res)?),
+                    };
+
+                    i += 1;
                 }
-            }};
+            }
+        }
+        macro_rules! apply {
+            ($f:expr) => {
+                apply(iter_shape, is_fold, $f)
+            };
         }
 
         match op {
