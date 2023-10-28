@@ -170,7 +170,8 @@ pub enum Expr {
     Binary(Box<Expr>, BinOp, Box<Expr>),
     Fold(FoldOp, Box<Expr>),
     Scan(FoldOp, Box<Expr>),
-    Index(Box<Expr>, Box<Expr>), // vector, indices
+    Index(Box<Expr>, Box<Expr>),       // vector, indices
+    Let(String, Box<Expr>, Box<Expr>), // let 0 = 1 in 2
 }
 
 impl fmt::Display for Expr {
@@ -199,6 +200,7 @@ impl fmt::Display for Expr {
             Expr::Fold(op, expr) => (format!("{}//{}", op, expr), true),
             Expr::Scan(op, expr) => (format!(r"{}\\{}", op, expr), true),
             Expr::Index(vec, indices) => (format!("{}[{}]", vec, indices), false),
+            Expr::Let(name, expr, body) => (format!("let {name} = {expr} in {body}"), true),
         };
 
         if paren {

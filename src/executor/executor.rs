@@ -756,6 +756,18 @@ impl<'a> Executor<'a> {
                     Some(i) => Ok(Matrix::from(i.clone()).into()),
                 }
             }
+
+            Expr::Let(name, expr, body) => {
+                let expr = self.execute_expr(expr)?.into_chain()?;
+                self.call_function(
+                    &Function {
+                        name: String::from("let-binding"),
+                        params: vec![name.clone()],
+                        expr: *body.clone(),
+                    },
+                    iter::once(expr),
+                )
+            }
         }
     }
 

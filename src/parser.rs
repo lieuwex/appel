@@ -69,6 +69,7 @@ fn binary_op<'a>() -> Parser<'a, BinOp> {
 fn check_reserved(s: String) -> Result<String, String> {
     let reserved = [
         "drop", "rho", "unpack", "pack", "log", "iota", "abs", "rev", "in", "max", "min", "pad",
+        "let",
     ];
 
     if reserved.contains(&s.as_str()) {
@@ -389,8 +390,18 @@ fn p_expr_11<'a>() -> Parser<'a, Expr> {
     fold.name("fold") | p_expr_10()
 }
 
+/// Let binding
+fn p_expr_12<'a>() -> Parser<'a, Expr> {
+    let let_binding = ((symbol_right(operator("let")) * p_varname())
+        + (symbol_both(operator("=")) * call(p_expr_0))
+        + (symbol_both(operator("in")) * call(p_expr)))
+    .map(|((name, expr), body)| Expr::Let(name, Box::new(expr), Box::new(body)));
+
+    let_binding.name("let_binding") | p_expr_11()
+}
+
 fn p_expr<'a>() -> Parser<'a, Expr> {
-    p_expr_11()
+    p_expr_12()
 }
 
 /// Function declare
@@ -503,5 +514,12 @@ mod tests {
         assert!(is_ok_some!(parse("1 2 (3 4)")));
         assert!(is_ok_some!(parse("(3 4) 2 (3 4)")));
         assert!(is_ok_some!(parse("(1+ 2 )*3")));
+    }
+
+    #[test]
+    fn test_let() {
+        assert!(is_ok_some!(parse("let a = 1 in a")));
+        assert!(!is_ok_some!(parse("let a in 5")));
+        assert!(is_ok_some!(parse("let a = (let b = 6 in b) in a")));
     }
 }
