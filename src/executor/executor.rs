@@ -632,6 +632,7 @@ impl<'a> Executor<'a> {
                         .into());
                     }
 
+                    // TODO: can we remove these clones?
                     let prev = Chain::make_scalar(accum[i - 1].clone());
                     let curr = Chain::make_scalar(items[i].clone());
 
