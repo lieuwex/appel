@@ -28,20 +28,16 @@ impl IterShape {
         self.shape.iter().sum()
     }
 
-    pub fn is_scalar(&self) -> bool {
-        self.len() == 1
-    }
-
-    pub fn scalar(&self) -> Option<Ratio> {
-        self.is_scalar().then(|| {
+    pub fn vector(&self) -> Option<Ratio> {
+        self.is_vector().then(|| {
             // TODO: optimize
             let mut i = self.iterator.clone();
             i.next().unwrap().unwrap()
         })
     }
 
-    pub fn into_scalar(mut self) -> Option<Ratio> {
-        self.is_scalar().then(|| {
+    pub fn into_vector(mut self) -> Option<Ratio> {
+        self.is_vector().then(|| {
             // TODO
             self.iterator.next().unwrap().unwrap()
         })

@@ -52,7 +52,7 @@ fn expect_vector(v: ExecutorResult) -> Result<Vec<Ratio>, String> {
     }
 }
 fn expect_scalar(v: ExecutorResult) -> Result<Ratio, String> {
-    match v.into_iter_shape()?.into_scalar() {
+    match v.into_iter_shape()?.into_vector() {
         None => Err(String::from("expected scalar")),
         Some(s) => Ok(s),
     }
@@ -85,7 +85,7 @@ fn call_binary(op: BinOp, a: Chain, b: Chain) -> Result<ExecutorResult, String> 
 
     let get_int = |v: IterShape| -> Result<Integer, String> {
         let s = v
-            .into_scalar()
+            .into_vector()
             .ok_or_else(|| String::from("expected scalar"))?;
         s.into_integer()
             .ok_or_else(|| String::from("expected integer"))
@@ -109,9 +109,9 @@ fn call_binary(op: BinOp, a: Chain, b: Chain) -> Result<ExecutorResult, String> 
             return Ok(matrix.into_result());
         }
 
-        let (scalar, non_scalar, scalar_is_left) = if let Some(s) = a.scalar() {
+        let (scalar, non_scalar, scalar_is_left) = if let Some(s) = a.vector() {
             (s, b, true)
-        } else if let Some(s) = b.scalar() {
+        } else if let Some(s) = b.vector() {
             (s, a, false)
         } else {
             return Err(String::from("rank mismatch"));
@@ -160,17 +160,21 @@ fn call_binary(op: BinOp, a: Chain, b: Chain) -> Result<ExecutorResult, String> 
                 return Err(String::from("rank mismatch"));
             }
 
+            if !a.is_vector() || !b.is_vector() {
+                return Err(String::from("all sides must be vectors"));
+            }
+
             let values = a.iterator.chain(b.iterator);
             Ok(Chain::MatrixIterator {
                 iterator: Box::new(values),
-                shape: a.shape,
+                shape: smallvec![a.shape[0] + b.shape[0]],
             }
             .into_result())
         }
 
         BinOp::Drop => {
             let scalar = a
-                .into_scalar()
+                .into_vector()
                 .ok_or_else(|| String::from("expected vector, got matrix"))?;
             let n = scalar
                 .into_integer()
@@ -610,7 +614,7 @@ impl<'a> Executor<'a> {
                 it.try_fold(
                     ExecutorResult::Chain(Chain::make_scalar(first?)),
                     |acc, item| -> Result<ExecutorResult, String> {
-                        let acc = acc.into_iter_shape()?.scalar().unwrap();
+                        let acc = acc.into_iter_shape()?.vector().unwrap();
                         let acc = Chain::make_scalar(acc);
 
                         let item = Chain::make_scalar(item?);
@@ -684,7 +688,7 @@ impl<'a> Executor<'a> {
                 let res: Result<Rational, String> = (|| {
                     let res = self.call_function(&f, iter::once(Chain::make_scalar(value)))?;
                     res.into_iter_shape()?
-                        .into_scalar()
+                        .into_vector()
                         .ok_or(format!("Function returned non-scalar in map"))
                 })();
 
