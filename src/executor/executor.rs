@@ -102,10 +102,10 @@ fn call_binary(op: BinOp, a: Chain, b: Chain) -> Result<ExecutorResult, String> 
                 .map(|(a, b)| (a.unwrap(), b.unwrap()))
                 .map(move |(a, b): (Rational, Rational)| f(a, b).map(Ratio::from));
 
-            let matrix = Chain::MatrixIterator {
+            let matrix = Chain::Iterator(IterShape {
                 iterator: Box::new(values),
                 shape: a.shape,
-            };
+            });
             return Ok(matrix.into_result());
         }
 
@@ -117,7 +117,7 @@ fn call_binary(op: BinOp, a: Chain, b: Chain) -> Result<ExecutorResult, String> 
             return Err(String::from("rank mismatch"));
         };
 
-        let matrix = Chain::MatrixIterator {
+        let matrix = Chain::Iterator(IterShape {
             iterator: Box::new(non_scalar.iterator.map(move |v| {
                 let scalar = scalar.clone();
                 v.and_then(|v: Rational| {
@@ -129,7 +129,7 @@ fn call_binary(op: BinOp, a: Chain, b: Chain) -> Result<ExecutorResult, String> 
                 })
             })),
             shape: non_scalar.shape,
-        };
+        });
 
         Ok(matrix.into_result())
     }
@@ -165,10 +165,10 @@ fn call_binary(op: BinOp, a: Chain, b: Chain) -> Result<ExecutorResult, String> 
             }
 
             let values = a.iterator.chain(b.iterator);
-            Ok(Chain::MatrixIterator {
+            Ok(Chain::Iterator(IterShape {
                 iterator: Box::new(values),
                 shape: smallvec![a.shape[0] + b.shape[0]],
-            }
+            })
             .into_result())
         }
 
@@ -196,10 +196,10 @@ fn call_binary(op: BinOp, a: Chain, b: Chain) -> Result<ExecutorResult, String> 
                 Box::new(b.iterator.take(amount))
             };
 
-            Ok(Chain::MatrixIterator {
+            Ok(Chain::Iterator(IterShape {
                 iterator: values,
                 shape: b.shape,
-            }
+            })
             .into_result())
         }
 
@@ -213,10 +213,10 @@ fn call_binary(op: BinOp, a: Chain, b: Chain) -> Result<ExecutorResult, String> 
                 .flatten()
                 .take(shape.iter().product());
 
-            Ok(Chain::MatrixIterator {
+            Ok(Chain::Iterator(IterShape {
                 iterator: Box::new(values),
                 shape,
-            }
+            })
             .into_result())
         }
 
@@ -306,10 +306,10 @@ fn call_binary(op: BinOp, a: Chain, b: Chain) -> Result<ExecutorResult, String> 
                 })
             });
 
-            Ok(Chain::MatrixIterator {
+            Ok(Chain::Iterator(IterShape {
                 iterator: Box::new(values),
                 shape: a.shape,
-            }
+            })
             .into_result())
         }
 
@@ -446,10 +446,10 @@ impl<'a> Executor<'a> {
                 // TODO: remove unwrap
                 let values = iterator.map(|x| x.unwrap()).map($f);
 
-                let new = Chain::MatrixIterator {
+                let new = Chain::Iterator(IterShape {
                     iterator: Box::new(values),
                     shape,
-                };
+                });
                 Ok(new.into_result())
             }};
         }
@@ -531,20 +531,20 @@ impl<'a> Executor<'a> {
                     .map(|s| Ratio::from_usize(s).unwrap())
                     .map(Ok);
 
-                Ok(Chain::MatrixIterator {
+                Ok(Chain::Iterator(IterShape {
                     iterator: Box::new(iterator),
                     shape: new_shape,
-                }
+                })
                 .into_result())
             }
 
             UnOp::Rev => {
                 let m = Matrix::try_from(res)?;
                 let values = m.values.into_iter().rev().map(Result::Ok);
-                Ok(Chain::MatrixIterator {
+                Ok(Chain::Iterator(IterShape {
                     iterator: Box::new(values),
                     shape: m.shape,
-                }
+                })
                 .into_result())
             }
 
@@ -567,10 +567,10 @@ impl<'a> Executor<'a> {
                     .map(move |v| Ratio::from_usize(v.0).unwrap())
                     .map(Result::Ok);
 
-                Ok(Chain::MatrixIterator {
+                Ok(Chain::Iterator(IterShape {
                     iterator: Box::new(values),
                     shape,
-                }
+                })
                 .into_result())
             }
 

@@ -66,10 +66,7 @@ impl TryFrom<IterShape> for Matrix {
 
 impl From<IterShape> for Chain {
     fn from(value: IterShape) -> Self {
-        Chain::MatrixIterator {
-            iterator: value.iterator,
-            shape: value.shape,
-        }
+        Chain::Iterator(value)
     }
 }
 
@@ -81,10 +78,7 @@ impl From<IterShape> for ExecutorResult {
 
 pub enum Chain {
     Value(Value),
-    MatrixIterator {
-        iterator: Box<dyn ValueIter>,
-        shape: SmallVec<[usize; 4]>,
-    },
+    Iterator(IterShape),
 }
 
 impl Chain {
@@ -93,17 +87,17 @@ impl Chain {
     }
 
     pub fn make_vector(iterator: Box<dyn ValueIter>, len: usize) -> Self {
-        Self::MatrixIterator {
+        Self::Iterator(IterShape {
             iterator,
             shape: smallvec![len],
-        }
+        })
     }
 
     pub fn into_iter_shape(self) -> Result<IterShape, String> {
         match self {
             Chain::Value(Value::Function(_)) => Err(String::from("expected value, got a function")),
 
-            Chain::MatrixIterator { iterator, shape } => Ok(IterShape { iterator, shape }),
+            Chain::Iterator(iter_shape) => Ok(iter_shape),
             Chain::Value(Value::Matrix(m)) => Ok(IterShape {
                 iterator: Box::new(m.values.into_iter().map(Ok)),
                 shape: m.shape,
@@ -119,10 +113,11 @@ impl Chain {
         let res = match self {
             Chain::Value(Value::Function(f)) => format!("{}", f),
             Chain::Value(Value::Matrix(m)) => m.format(fmt),
-            Chain::MatrixIterator { iterator, shape } => {
+            Chain::Iterator(IterShape { iterator, shape }) => {
                 let n_dimensions = shape.len();
                 match n_dimensions {
-                    2 => Matrix::try_from(Chain::MatrixIterator { iterator, shape })?.format(fmt),
+                    2 => Matrix::try_from(Chain::Iterator(IterShape { iterator, shape }))?
+                        .format(fmt),
                     _ => iterator
                         .enumerate()
                         .map(|(i, val)| {
@@ -147,9 +142,7 @@ impl TryFrom<Chain> for Value {
     fn try_from(value: Chain) -> Result<Self, Self::Error> {
         match value {
             Chain::Value(v) => Ok(v),
-            Chain::MatrixIterator { iterator, shape } => {
-                Matrix::try_from(IterShape { iterator, shape }).map(Value::Matrix)
-            }
+            Chain::Iterator(iter_shape) => Matrix::try_from(iter_shape).map(Value::Matrix),
         }
     }
 }
@@ -170,10 +163,10 @@ impl Clone for Chain {
     fn clone(&self) -> Self {
         match self {
             Chain::Value(v) => Chain::Value(v.clone()),
-            Chain::MatrixIterator { iterator, shape } => Chain::MatrixIterator {
+            Chain::Iterator(IterShape { iterator, shape }) => Chain::Iterator(IterShape {
                 iterator: clone_box(iterator),
                 shape: shape.clone(),
-            },
+            }),
         }
     }
 }
