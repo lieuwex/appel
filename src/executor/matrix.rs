@@ -106,7 +106,7 @@ impl Matrix {
     }
 
     // REVIEW: this seems broken
-    pub fn get_at(&self, indices: &[usize]) -> Option<&Ratio> {
+    fn get_index(&self, indices: &[usize]) -> Option<usize> {
         if indices.len() != self.shape.len() {
             return None;
         }
@@ -118,7 +118,16 @@ impl Matrix {
             mult *= self.shape[dim];
         }
 
+        Some(i)
+    }
+
+    pub fn get_at(&self, indices: &[usize]) -> Option<&Ratio> {
+        let i = self.get_index(indices)?;
         self.values.get(i)
+    }
+    pub fn take_at(self, indices: &[usize]) -> Option<Ratio> {
+        let i = self.get_index(indices)?;
+        self.values.into_iter().nth(i)
     }
 }
 

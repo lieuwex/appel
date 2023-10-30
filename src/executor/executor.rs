@@ -771,9 +771,9 @@ impl<'a> Executor<'a> {
                     .map(|v| to_usize_error(&v))
                     .collect::<Result<_, String>>()?;
 
-                match m.get_at(&indices) {
+                match m.take_at(&indices) {
                     None => Err(String::from("out of bounds")),
-                    Some(i) => Ok(Matrix::make_scalar(i.clone()).into()),
+                    Some(i) => Ok(Matrix::make_scalar(i).into()),
                 }
             }
 
