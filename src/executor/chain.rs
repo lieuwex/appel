@@ -83,7 +83,7 @@ pub enum Chain {
 
 impl Chain {
     pub fn make_scalar(r: Ratio) -> Self {
-        Chain::Value(Value::Matrix(Matrix::from(r)))
+        Chain::Value(Value::Matrix(Matrix::make_scalar(r)))
     }
 
     pub fn make_vector(iterator: Box<dyn ValueIter>, len: usize) -> Self {

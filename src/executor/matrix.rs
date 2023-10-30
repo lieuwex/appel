@@ -80,6 +80,13 @@ impl Matrix {
 }
 
 impl Matrix {
+    pub fn make_scalar(value: Ratio) -> Self {
+        Self {
+            values: vec![value],
+            shape: smallvec![1],
+        }
+    }
+
     pub fn make_vector(values: Vec<Ratio>) -> Self {
         let shape = smallvec![values.len()];
         Self { values, shape }
@@ -112,15 +119,6 @@ impl Matrix {
         }
 
         self.values.get(i)
-    }
-}
-
-impl From<Ratio> for Matrix {
-    fn from(rat: Ratio) -> Self {
-        Self {
-            values: vec![rat],
-            shape: smallvec![1],
-        }
     }
 }
 

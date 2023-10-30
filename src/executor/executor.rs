@@ -290,7 +290,7 @@ fn call_binary(op: BinOp, a: Chain, b: Chain) -> Result<ExecutorResult, String> 
             let int = int.to_string();
             let int = Integer::from_str_radix(&int, 10).unwrap();
 
-            Ok(Matrix::from(Ratio::from(int)).into())
+            Ok(Matrix::make_scalar(Ratio::from(int)).into())
         }
 
         BinOp::In => {
@@ -380,7 +380,7 @@ impl<'a> Executor<'a> {
             ($name:expr, $f:expr) => {
                 res.variables.insert(
                     String::from($name),
-                    Value::Matrix(Matrix::from({
+                    Value::Matrix(Matrix::make_scalar({
                         let mut r = Ratio::new();
                         r.assign_f64($f).unwrap();
                         r
@@ -704,7 +704,7 @@ impl<'a> Executor<'a> {
 
     fn execute_expr(&mut self, node: &Expr) -> Result<ExecutorResult, String> {
         match node {
-            Expr::Atom(Atom::Rat(v)) => Ok(Matrix::from(v.clone()).into()),
+            Expr::Atom(Atom::Rat(v)) => Ok(Matrix::make_scalar(v.clone()).into()),
             Expr::Atom(Atom::Ref(s)) => {
                 let var = match self.get_variable(s) {
                     None => return Err(format!("variable {} not found", s)),
@@ -773,7 +773,7 @@ impl<'a> Executor<'a> {
 
                 match m.get_at(&indices) {
                     None => Err(String::from("out of bounds")),
-                    Some(i) => Ok(Matrix::from(i.clone()).into()),
+                    Some(i) => Ok(Matrix::make_scalar(i.clone()).into()),
                 }
             }
 
