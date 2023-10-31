@@ -725,22 +725,30 @@ impl<'a> Executor<'a> {
 
             Expr::Index(m, indices) => {
                 let indices = expect_vector(self.execute_expr(indices)?)?;
-
-                if indices.iter().any(|i| !i.is_integer()) {
-                    return Err(String::from("expected indices to be integers"));
-                }
-
-                let m = Matrix::try_from(self.execute_expr(m)?)?;
-
                 let indices: Vec<usize> = indices
                     .into_iter()
                     .map(|v| to_usize_error(&v))
                     .collect::<Result<_, String>>()?;
+                let new_len = indices.len();
 
-                match m.take_multiple(&indices) {
-                    None => Err(String::from("out of bounds")),
-                    Some(i) => Ok(Matrix::make_vector(i).into()),
+                let IterShape { iterator, len } = self.execute_expr(m)?.into_iter_shape()?;
+
+                if indices.iter().any(|i| *i >= len) {
+                    return Err(String::from("out of bounds"));
                 }
+
+                let it = Box::new(
+                    iterator
+                        .enumerate()
+                        .filter(move |(i, _)| indices.contains(i))
+                        .map(|(_, r)| r),
+                );
+
+                Ok(Chain::Iterator(IterShape {
+                    iterator: it,
+                    len: new_len,
+                })
+                .into_result())
             }
 
             Expr::Let(name, expr, body) => {
