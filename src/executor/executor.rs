@@ -583,6 +583,7 @@ impl<'a> Executor<'a> {
                 it.try_fold(
                     ExecutorResult::Chain(Chain::make_scalar(first?)),
                     |acc, item| -> Result<ExecutorResult, String> {
+                        // TODO: I feel like this can be optimised
                         let acc = acc.into_iter_shape()?.scalar().unwrap();
                         let acc = Chain::make_scalar(acc);
 
