@@ -90,15 +90,10 @@ impl Matrix {
     }
 
     pub fn take_multiple(self, indices: &[usize]) -> Option<Vec<Ratio>> {
-        if indices.iter().any(|i| *i >= self.len) {
-            return None;
-        }
-
-        let res = indices
+        indices
             .into_iter()
-            .map(|i| self.values[*i].clone())
-            .collect();
-        Some(res)
+            .map(|i| self.values.get(*i).cloned())
+            .collect()
     }
 }
 
