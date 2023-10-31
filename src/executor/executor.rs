@@ -737,7 +737,7 @@ impl<'a> Executor<'a> {
                     .map(|v| to_usize_error(&v))
                     .collect::<Result<_, String>>()?;
 
-                match m.take_multiple(&indices) {
+                match m.get_multiple(&indices) {
                     None => Err(String::from("out of bounds")),
                     Some(i) => Ok(Matrix::make_vector(i).into()),
                 }

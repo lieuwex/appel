@@ -89,7 +89,7 @@ impl Matrix {
         self.values.into_iter().nth(i)
     }
 
-    pub fn take_multiple(self, indices: &[usize]) -> Option<Vec<Ratio>> {
+    pub fn get_multiple(&self, indices: &[usize]) -> Option<Vec<Ratio>> {
         indices
             .into_iter()
             .map(|i| self.values.get(*i).cloned())
