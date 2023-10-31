@@ -5,7 +5,6 @@ use crate::ast::*;
 use std::convert::TryFrom;
 use std::io::Write;
 
-use smallvec::{smallvec, SmallVec};
 use tabwriter::{Alignment, TabWriter};
 
 #[derive(Clone, Copy)]
@@ -35,47 +34,23 @@ impl Formatter {
 #[derive(Clone, Debug)]
 pub struct Matrix {
     pub values: Vec<Ratio>,
-    pub shape: SmallVec<[usize; 4]>,
+    pub len: usize,
 }
 
 impl Matrix {
     pub fn format(&self, fmt: Formatter) -> String {
-        // TODO: actually format
-
-        let n_dimensions = self.shape.len();
-        match n_dimensions {
-            2 => {
-                let mut writer = TabWriter::new(vec![])
-                    .padding(1)
-                    .minwidth(0)
-                    .alignment(Alignment::Right);
-
-                for i in 0..self.shape[0] {
-                    for j in 0..self.shape[1] {
-                        let val = self.get_at(&[i, j]).unwrap();
-                        write!(&mut writer, "{}\t", fmt.apply(val)).unwrap();
-                    }
-                    writeln!(writer).unwrap();
+        self.values
+            .iter()
+            .enumerate()
+            .map(|(i, val)| {
+                let val = fmt.apply(val);
+                if i > 0 {
+                    format!(" {}", val)
+                } else {
+                    val
                 }
-
-                writer.flush().unwrap();
-                String::from_utf8(writer.into_inner().unwrap()).unwrap()
-            }
-
-            _ => self
-                .values
-                .iter()
-                .enumerate()
-                .map(|(i, val)| {
-                    let val = fmt.apply(val);
-                    if i > 0 {
-                        format!(" {}", val)
-                    } else {
-                        val
-                    }
-                })
-                .collect::<String>(),
-        }
+            })
+            .collect::<String>()
     }
 }
 
@@ -83,13 +58,15 @@ impl Matrix {
     pub fn make_scalar(value: Ratio) -> Self {
         Self {
             values: vec![value],
-            shape: smallvec![1],
+            len: 1,
         }
     }
 
     pub fn make_vector(values: Vec<Ratio>) -> Self {
-        let shape = smallvec![values.len()];
-        Self { values, shape }
+        Self {
+            len: values.len(),
+            values,
+        }
     }
 
     pub fn is_scalar(&self) -> bool {
@@ -105,29 +82,26 @@ impl Matrix {
             .then(|| self.values.into_iter().nth(0).unwrap())
     }
 
-    // REVIEW: this seems broken
-    fn get_index(&self, indices: &[usize]) -> Option<usize> {
-        if indices.len() != self.shape.len() {
+    pub fn get_at(&self, i: usize) -> Option<&Ratio> {
+        self.values.get(i)
+    }
+    pub fn take_at(self, i: usize) -> Option<Ratio> {
+        self.values.into_iter().nth(i)
+    }
+
+    pub fn take_multiple(self, indices: &[usize]) -> Option<Vec<Ratio>> {
+        if indices.iter().any(|i| *i >= self.len) {
             return None;
         }
 
-        let mut i = 0;
-        let mut mult = 1;
-        for (dim, index) in indices.iter().rev().enumerate() {
-            i += index * mult;
-            mult *= self.shape[dim];
-        }
-
-        Some(i)
-    }
-
-    pub fn get_at(&self, indices: &[usize]) -> Option<&Ratio> {
-        let i = self.get_index(indices)?;
-        self.values.get(i)
-    }
-    pub fn take_at(self, indices: &[usize]) -> Option<Ratio> {
-        let i = self.get_index(indices)?;
-        self.values.into_iter().nth(i)
+        let res = self
+            .values
+            .into_iter()
+            .enumerate()
+            .filter(|(i, _)| indices.contains(&i))
+            .map(|(_, r)| r)
+            .collect();
+        Some(res)
     }
 }
 

@@ -14,8 +14,6 @@ use rug::{Float, Integer, Rational};
 
 use rand::prelude::*;
 
-use smallvec::{smallvec, SmallVec};
-
 use super::function::Function;
 use super::matrix::Matrix;
 use super::result::ExecutorResult;
@@ -46,13 +44,10 @@ pub struct Executor<'a> {
 
 fn expect_vector(v: ExecutorResult) -> Result<Vec<Ratio>, String> {
     let m = Matrix::try_from(v)?;
-    match m.shape.len() {
-        0 | 1 => Ok(m.values),
-        _ => Err(String::from("expected vector, got matrix")),
-    }
+    Ok(m.values)
 }
 fn expect_scalar(v: ExecutorResult) -> Result<Ratio, String> {
-    match v.into_iter_shape()?.into_vector() {
+    match v.into_iter_shape()?.into_scalar() {
         None => Err(String::from("expected scalar")),
         Some(s) => Ok(s),
     }
@@ -85,7 +80,7 @@ fn call_binary(op: BinOp, a: Chain, b: Chain) -> Result<ExecutorResult, String> 
 
     let get_int = |v: IterShape| -> Result<Integer, String> {
         let s = v
-            .into_vector()
+            .into_scalar()
             .ok_or_else(|| String::from("expected scalar"))?;
         s.into_integer()
             .ok_or_else(|| String::from("expected integer"))
@@ -96,7 +91,7 @@ fn call_binary(op: BinOp, a: Chain, b: Chain) -> Result<ExecutorResult, String> 
         b: IterShape,
         f: impl Fn(Rational, Rational) -> Result<Rational, String> + Clone + 'static,
     ) -> Result<ExecutorResult, String> {
-        if a.shape == b.shape {
+        if a.len == b.len {
             let values = (a.iterator)
                 .zip(b.iterator)
                 .map(|(a, b)| (a.unwrap(), b.unwrap()))
@@ -104,14 +99,14 @@ fn call_binary(op: BinOp, a: Chain, b: Chain) -> Result<ExecutorResult, String> 
 
             let matrix = Chain::Iterator(IterShape {
                 iterator: Box::new(values),
-                shape: a.shape,
+                len: a.len,
             });
             return Ok(matrix.into_result());
         }
 
-        let (scalar, non_scalar, scalar_is_left) = if let Some(s) = a.vector() {
+        let (scalar, non_scalar, scalar_is_left) = if let Some(s) = a.scalar() {
             (s, b, true)
-        } else if let Some(s) = b.vector() {
+        } else if let Some(s) = b.scalar() {
             (s, a, false)
         } else {
             return Err(String::from("rank mismatch"));
@@ -128,7 +123,7 @@ fn call_binary(op: BinOp, a: Chain, b: Chain) -> Result<ExecutorResult, String> 
                     }
                 })
             })),
-            shape: non_scalar.shape,
+            len: non_scalar.len,
         });
 
         Ok(matrix.into_result())
@@ -156,26 +151,18 @@ fn call_binary(op: BinOp, a: Chain, b: Chain) -> Result<ExecutorResult, String> 
         BinOp::CompOp(x) => apply_ok!(get_comp_op_fn(x)),
 
         BinOp::Concat => {
-            if a.shape.len() != b.shape.len() {
-                return Err(String::from("rank mismatch"));
-            }
-
-            if !a.is_vector() || !b.is_vector() {
-                return Err(String::from("all sides must be vectors"));
-            }
-
             let values = a.iterator.chain(b.iterator);
             Ok(Chain::Iterator(IterShape {
                 iterator: Box::new(values),
-                shape: smallvec![a.shape[0] + b.shape[0]],
+                len: a.len + b.len,
             })
             .into_result())
         }
 
         BinOp::Drop => {
             let scalar = a
-                .into_vector()
-                .ok_or_else(|| String::from("expected vector, got matrix"))?;
+                .into_scalar()
+                .ok_or_else(|| String::from("expected scalar, got matrix"))?;
             let n = scalar
                 .into_integer()
                 .ok_or_else(|| "value must be an integer".to_owned())?;
@@ -189,33 +176,27 @@ fn call_binary(op: BinOp, a: Chain, b: Chain) -> Result<ExecutorResult, String> 
                 .to_usize()
                 .ok_or_else(|| "value too large for usize".to_owned())?;
 
-            let values: Box<dyn ValueIter> = if at_start {
-                Box::new(b.iterator.skip(n))
+            let (iterator, len): (Box<dyn ValueIter>, usize) = if at_start {
+                (Box::new(b.iterator.skip(n)), b.len - n)
             } else {
-                let amount = b.len() - n;
-                Box::new(b.iterator.take(amount))
+                let amount = b.len - n;
+                (Box::new(b.iterator.take(amount)), amount)
             };
 
-            Ok(Chain::Iterator(IterShape {
-                iterator: values,
-                shape: b.shape,
-            })
-            .into_result())
+            Ok(Chain::Iterator(IterShape { iterator, len }).into_result())
         }
 
         BinOp::Rho => {
-            let shape: SmallVec<[usize; 4]> = a
-                .iterator
-                .map(|v| v.and_then(|v| to_usize_error(&v)))
-                .collect::<Result<_, String>>()?;
+            let len = a
+                .into_scalar()
+                .ok_or_else(|| String::from("expected scalar"))?;
+            let len = to_usize_error(&len)?;
 
-            let values = std::iter::repeat(b.iterator)
-                .flatten()
-                .take(shape.iter().product());
+            let values = std::iter::repeat(b.iterator).flatten().take(len);
 
             Ok(Chain::Iterator(IterShape {
                 iterator: Box::new(values),
-                shape,
+                len,
             })
             .into_result())
         }
@@ -308,20 +289,12 @@ fn call_binary(op: BinOp, a: Chain, b: Chain) -> Result<ExecutorResult, String> 
 
             Ok(Chain::Iterator(IterShape {
                 iterator: Box::new(values),
-                shape: a.shape,
+                len: a.len,
             })
             .into_result())
         }
 
         BinOp::Mask => {
-            if a.shape.len() != b.shape.len() {
-                return Err(String::from("rank mismatch"));
-            }
-
-            if !a.is_vector() || !b.is_vector() {
-                return Err(String::from("all sides must be vectors"));
-            }
-
             // TODO: only LHS has to be collected
             let values: Vec<_> = (a.iterator)
                 .zip(b.iterator)
@@ -341,12 +314,6 @@ fn call_binary(op: BinOp, a: Chain, b: Chain) -> Result<ExecutorResult, String> 
             if a.len() != 2 {
                 return Err(format!("expected 2 arguments on the left, got {}", a.len()));
             }
-            if !b.is_vector() {
-                return Err(format!(
-                    "expected vector on the right, got an {}-dimensional shape instead",
-                    b.shape.len()
-                ));
-            }
 
             let mut it = a.into_iter();
             let new_len = it
@@ -363,7 +330,7 @@ fn call_binary(op: BinOp, a: Chain, b: Chain) -> Result<ExecutorResult, String> 
             };
             let new_len = new_len.to_usize().unwrap();
 
-            let amount = new_len.checked_sub(b.shape.len()).ok_or_else(|| {
+            let amount = new_len.checked_sub(b.len).ok_or_else(|| {
                 "vector on the right is longer than the wanted padded length".to_owned()
             })?;
 
@@ -461,14 +428,14 @@ impl<'a> Executor<'a> {
 
         macro_rules! for_all {
             ($f:expr) => {{
-                let IterShape { iterator, shape } = res.into_iter_shape()?;
+                let IterShape { iterator, len } = res.into_iter_shape()?;
 
                 // TODO: remove unwrap
                 let values = iterator.map(|x| x.unwrap()).map($f);
 
                 let new = Chain::Iterator(IterShape {
                     iterator: Box::new(values),
-                    shape,
+                    len,
                 });
                 Ok(new.into_result())
             }};
@@ -543,19 +510,7 @@ impl<'a> Executor<'a> {
 
             UnOp::Rho => {
                 let res = res.into_iter_shape()?;
-
-                let new_shape = smallvec![res.shape.len()];
-                let iterator = res
-                    .shape
-                    .into_iter()
-                    .map(|s| Ratio::from_usize(s).unwrap())
-                    .map(Ok);
-
-                Ok(Chain::Iterator(IterShape {
-                    iterator: Box::new(iterator),
-                    shape: new_shape,
-                })
-                .into_result())
+                Ok(Matrix::make_scalar(Rational::from(res.len)).into())
             }
 
             UnOp::Rev => {
@@ -563,13 +518,13 @@ impl<'a> Executor<'a> {
                 let values = m.values.into_iter().rev().map(Result::Ok);
                 Ok(Chain::Iterator(IterShape {
                     iterator: Box::new(values),
-                    shape: m.shape,
+                    len: m.len,
                 })
                 .into_result())
             }
 
             UnOp::Up | UnOp::Down => {
-                let IterShape { iterator, shape } = res.into_iter_shape()?;
+                let IterShape { iterator, len } = res.into_iter_shape()?;
                 let values: Result<Vec<(usize, Ratio)>, String> = iterator
                     .enumerate()
                     .map(|(i, x)| x.map(|x| (i, x)))
@@ -589,15 +544,9 @@ impl<'a> Executor<'a> {
 
                 Ok(Chain::Iterator(IterShape {
                     iterator: Box::new(values),
-                    shape,
+                    len,
                 })
                 .into_result())
-            }
-
-            UnOp::Ravel => {
-                let IterShape { iterator, shape } = res.into_iter_shape()?;
-                let len: usize = shape.into_iter().sum();
-                Ok(Chain::make_vector(Box::new(iterator), len).into_result())
             }
         }
     }
@@ -617,7 +566,7 @@ impl<'a> Executor<'a> {
         is_fold: bool,
     ) -> Result<ExecutorResult, String> {
         let iter_shape = self.execute_expr(expr)?.into_iter_shape()?;
-        if iter_shape.len() < 1 {
+        if iter_shape.len < 1 {
             return Err(String::from("matrix must have at least 1 value"));
         }
 
@@ -634,7 +583,7 @@ impl<'a> Executor<'a> {
                 it.try_fold(
                     ExecutorResult::Chain(Chain::make_scalar(first?)),
                     |acc, item| -> Result<ExecutorResult, String> {
-                        let acc = acc.into_iter_shape()?.vector().unwrap();
+                        let acc = acc.into_iter_shape()?.scalar().unwrap();
                         let acc = Chain::make_scalar(acc);
 
                         let item = Chain::make_scalar(item?);
@@ -651,7 +600,7 @@ impl<'a> Executor<'a> {
                     if i >= items.len() {
                         break Ok(Matrix {
                             values: accum,
-                            shape: iter_shape.shape,
+                            len: iter_shape.len,
                         }
                         .into());
                     }
@@ -708,7 +657,7 @@ impl<'a> Executor<'a> {
                 let res: Result<Rational, String> = (|| {
                     let res = self.call_function(&f, iter::once(Chain::make_scalar(value)))?;
                     res.into_iter_shape()?
-                        .into_vector()
+                        .into_scalar()
                         .ok_or(format!("Function returned non-scalar in map"))
                 })();
 
@@ -777,23 +726,19 @@ impl<'a> Executor<'a> {
                 let indices = expect_vector(self.execute_expr(indices)?)?;
 
                 if indices.iter().any(|i| !i.is_integer()) {
-                    return Err(String::from("expected integers"));
+                    return Err(String::from("expected indices to be integers"));
                 }
 
                 let m = Matrix::try_from(self.execute_expr(m)?)?;
-
-                if indices.len() != m.shape.len() {
-                    return Err(String::from("rank mismatch"));
-                }
 
                 let indices: Vec<usize> = indices
                     .into_iter()
                     .map(|v| to_usize_error(&v))
                     .collect::<Result<_, String>>()?;
 
-                match m.take_at(&indices) {
+                match m.take_multiple(&indices) {
                     None => Err(String::from("out of bounds")),
-                    Some(i) => Ok(Matrix::make_scalar(i).into()),
+                    Some(i) => Ok(Matrix::make_vector(i).into()),
                 }
             }
 
