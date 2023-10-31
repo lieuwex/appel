@@ -53,6 +53,7 @@ fn binary_op<'a>() -> Parser<'a, BinOp> {
         | symbol_both(operator("log")).map(|_| BinOp::Log)
         | symbol_both(operator(",")).map(|_| BinOp::Concat)
         | symbol_both(operator("in")).map(|_| BinOp::In)
+        | symbol_both(operator("mask")).map(|_| BinOp::Mask)
         | symbol_both(operator("max")).map(|_| BinOp::Max)
         | symbol_both(operator("min")).map(|_| BinOp::Min)
         | symbol_both(operator("pad")).map(|_| BinOp::Pad)
@@ -68,8 +69,8 @@ fn binary_op<'a>() -> Parser<'a, BinOp> {
 
 fn check_reserved(s: String) -> Result<String, String> {
     let reserved = [
-        "drop", "rho", "unpack", "pack", "log", "iota", "abs", "rev", "in", "max", "min", "pad",
-        "let",
+        "drop", "rho", "unpack", "pack", "log", "iota", "abs", "rev", "in", "mask", "max", "min",
+        "pad", "let",
     ];
 
     if reserved.contains(&s.as_str()) {
@@ -358,6 +359,7 @@ fn p_expr_9<'a>() -> Parser<'a, Expr> {
         | symbol_both(operator("log")).map(|_| BinOp::Log)
         | symbol_both(operator(",")).map(|_| BinOp::Concat)
         | symbol_both(operator("in")).map(|_| BinOp::In)
+        | symbol_both(operator("mask")).map(|_| BinOp::Mask)
         | symbol_both(operator("max")).map(|_| BinOp::Max)
         | symbol_both(operator("min")).map(|_| BinOp::Min)
         | symbol_both(operator("pad")).map(|_| BinOp::Pad)

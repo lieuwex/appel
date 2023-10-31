@@ -313,6 +313,26 @@ fn call_binary(op: BinOp, a: Chain, b: Chain) -> Result<ExecutorResult, String> 
             .into_result())
         }
 
+        BinOp::Mask => {
+            if a.shape.len() != b.shape.len() {
+                return Err(String::from("rank mismatch"));
+            }
+
+            if !a.is_vector() || !b.is_vector() {
+                return Err(String::from("all sides must be vectors"));
+            }
+
+            // TODO: only LHS has to be collected
+            let values: Vec<_> = (a.iterator)
+                .zip(b.iterator)
+                .map(|(a, b)| (a.unwrap(), b.unwrap()))
+                .filter(|(a, _)| !a.is_zero())
+                .map(|(_, b)| b)
+                .collect();
+
+            Ok(Matrix::make_vector(values).into())
+        }
+
         BinOp::Max => apply_ok!(|a: Ratio, b: Ratio| a.max(b)),
         BinOp::Min => apply_ok!(|a: Ratio, b: Ratio| a.min(b)),
 
