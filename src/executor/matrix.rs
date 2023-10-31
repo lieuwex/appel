@@ -94,12 +94,9 @@ impl Matrix {
             return None;
         }
 
-        let res = self
-            .values
+        let res = indices
             .into_iter()
-            .enumerate()
-            .filter(|(i, _)| indices.contains(&i))
-            .map(|(_, r)| r)
+            .map(|i| self.values[*i].clone())
             .collect();
         Some(res)
     }
