@@ -42,10 +42,6 @@ pub struct Executor<'a> {
     variables: HashMap<String, Value>,
 }
 
-fn expect_vector(v: ExecutorResult) -> Result<Vec<Ratio>, String> {
-    let m = Matrix::try_from(v)?;
-    Ok(m.values)
-}
 fn expect_scalar(v: ExecutorResult) -> Result<Ratio, String> {
     match v.into_iter_shape()?.into_scalar() {
         None => Err(String::from("expected scalar")),
@@ -58,7 +54,17 @@ fn to_usize_error(rat: &Ratio) -> Result<usize, String> {
         .to_integer()
         .ok_or_else(|| "value is not an integer".to_owned())?;
     int.to_usize()
-        .ok_or_else(|| "value too large for usize".to_owned())
+        .ok_or_else(|| "value negative or too large for usize".to_owned())
+}
+
+fn into_integer_error(iter_shape: IterShape) -> Result<Integer, String> {
+    let scalar = iter_shape
+        .into_scalar()
+        .ok_or_else(|| String::from("expected scalar, got vector"))?;
+    let n = scalar
+        .into_integer()
+        .ok_or_else(|| "value must be an integer".to_owned())?;
+    Ok(n)
 }
 
 fn get_comp_op_fn(op: CompOp) -> impl Fn(Ratio, Ratio) -> Ratio {
@@ -71,20 +77,12 @@ fn get_comp_op_fn(op: CompOp) -> impl Fn(Ratio, Ratio) -> Ratio {
         CompOp::Ge => &|a, b| a >= b,
     };
 
-    move |a: Ratio, b: Ratio| -> Ratio { Ratio::from_u8(fun(a, b) as u8).unwrap() }
+    move |a: Ratio, b: Ratio| -> Ratio { Ratio::from(fun(a, b) as u8) }
 }
 
 fn call_binary(op: BinOp, a: Chain, b: Chain) -> Result<ExecutorResult, String> {
     let a = a.into_iter_shape()?;
     let b = b.into_iter_shape()?;
-
-    let get_int = |v: IterShape| -> Result<Integer, String> {
-        let s = v
-            .into_scalar()
-            .ok_or_else(|| String::from("expected scalar"))?;
-        s.into_integer()
-            .ok_or_else(|| String::from("expected integer"))
-    };
 
     fn apply(
         a: IterShape,
@@ -160,12 +158,7 @@ fn call_binary(op: BinOp, a: Chain, b: Chain) -> Result<ExecutorResult, String> 
         }
 
         BinOp::Drop => {
-            let scalar = a
-                .into_scalar()
-                .ok_or_else(|| String::from("expected scalar, got matrix"))?;
-            let n = scalar
-                .into_integer()
-                .ok_or_else(|| "value must be an integer".to_owned())?;
+            let n = into_integer_error(a)?;
 
             let (n, at_start) = if (&n).signum() == -1 {
                 (n.neg().into(), false)
@@ -202,9 +195,9 @@ fn call_binary(op: BinOp, a: Chain, b: Chain) -> Result<ExecutorResult, String> 
         }
 
         BinOp::Unpack => {
-            let a = get_int(a)?;
+            let a = into_integer_error(a)?;
 
-            let b = get_int(b)?;
+            let b = into_integer_error(b)?;
             let b = b.to_string();
             let b = BigInt::parse_bytes(b.as_bytes(), 10).unwrap();
 
@@ -231,11 +224,11 @@ fn call_binary(op: BinOp, a: Chain, b: Chain) -> Result<ExecutorResult, String> 
             Ok(Chain::make_vector(Box::new(values), len).into_result())
         }
         BinOp::Pack => {
-            let a = get_int(a)?;
+            let a = into_integer_error(a)?;
 
-            let b = expect_vector(b.into())?;
             let b: Vec<_> = b
-                .into_iter()
+                .iterator
+                .map(Result::unwrap)
                 .map(|v| {
                     let (numer, denom) = v.into_numer_denom();
 
@@ -310,14 +303,14 @@ fn call_binary(op: BinOp, a: Chain, b: Chain) -> Result<ExecutorResult, String> 
         BinOp::Min => apply_ok!(|a: Ratio, b: Ratio| a.min(b)),
 
         BinOp::Pad => {
-            let a = expect_vector(a.into())?;
-            if a.len() != 2 {
-                return Err(format!("expected 2 arguments on the left, got {}", a.len()));
+            if a.len != 2 {
+                return Err(format!("expected 2 arguments on the left, got {}", a.len));
             }
 
-            let mut it = a.into_iter();
+            let mut it = a.iterator;
             let new_len = it
                 .next()
+                .unwrap()
                 .unwrap()
                 .into_integer()
                 .ok_or_else(|| "new length must be an integer".to_owned())?;
@@ -334,7 +327,7 @@ fn call_binary(op: BinOp, a: Chain, b: Chain) -> Result<ExecutorResult, String> 
                 "vector on the right is longer than the wanted padded length".to_owned()
             })?;
 
-            let repeated = iter::repeat(value).take(amount).map(Result::Ok);
+            let repeated = iter::repeat(value).take(amount);
             let values: Box<dyn ValueIter> = if at_start {
                 Box::new(repeated.chain(b.iterator))
             } else {
@@ -463,19 +456,15 @@ impl<'a> Executor<'a> {
                 }
 
                 let mut rng = rand::thread_rng();
-                let upper: u64 = x
+                let upper: u128 = x
                     .into_integer()
                     .ok_or_else(|| "value must be an integer".to_owned())?
-                    .to_u64()
+                    .to_u128()
                     .ok_or_else(|| "value too large to be rolled".to_owned())?;
-                let val: u64 = rng.gen_range(0..=upper);
-                Ratio::from_u64(val).ok_or_else(|| "couldn't convert u64 to ratio".to_owned())
+                let val: u128 = rng.gen_range(0..=upper);
+                Ratio::from_u128(val).ok_or_else(|| "couldn't convert u64 to ratio".to_owned())
             }),
             UnOp::RollFloat => for_all!(|x: Ratio| {
-                if x <= Ratio::zero() {
-                    return Err("value must be greater than 0".to_owned());
-                }
-
                 let mut rng = rand::thread_rng();
                 let val: f64 = rng.gen_range(0.0..=1.0);
                 Ratio::from_f64(val)
@@ -515,10 +504,11 @@ impl<'a> Executor<'a> {
 
             UnOp::Rev => {
                 let m = Matrix::try_from(res)?;
+                let len = m.len();
                 let values = m.values.into_iter().rev().map(Result::Ok);
                 Ok(Chain::Iterator(IterShape {
+                    len,
                     iterator: Box::new(values),
-                    len: m.len,
                 })
                 .into_result())
             }
@@ -539,7 +529,7 @@ impl<'a> Executor<'a> {
 
                 let values = values
                     .into_iter()
-                    .map(move |v| Ratio::from_usize(v.0).unwrap())
+                    .map(|(i, _)| Ratio::from_usize(i).unwrap())
                     .map(Result::Ok);
 
                 Ok(Chain::Iterator(IterShape {
@@ -592,30 +582,21 @@ impl<'a> Executor<'a> {
                     },
                 )
             } else {
-                let items: Result<Vec<Ratio>, _> = iter_shape.iterator.collect();
-                let items = items?;
-                let mut accum = vec![items[0].clone()];
+                let mut it = iter_shape.iterator;
+                let mut accum = Vec::with_capacity(iter_shape.len);
+                accum.push(it.next().unwrap().unwrap());
 
-                let mut i = 1;
                 loop {
-                    if i >= items.len() {
-                        break Ok(Matrix {
-                            values: accum,
-                            len: iter_shape.len,
-                        }
-                        .into());
-                    }
-
-                    // TODO: can we remove these clones?
-                    let prev = Chain::make_scalar(accum[i - 1].clone());
-                    let curr = Chain::make_scalar(items[i].clone());
-
-                    match f(prev, curr) {
-                        e @ Err(_) => break e,
-                        Ok(res) => accum.push(expect_scalar(res)?),
+                    let item = match it.next().transpose()? {
+                        None => break Ok(Matrix { values: accum }.into()),
+                        Some(i) => i,
                     };
 
-                    i += 1;
+                    let prev = Chain::make_scalar(accum.last().unwrap().clone());
+                    let curr = Chain::make_scalar(item);
+
+                    let res = f(prev, curr)?;
+                    accum.push(expect_scalar(res)?)
                 }
             }
         }
@@ -724,17 +705,14 @@ impl<'a> Executor<'a> {
             Expr::Scan(op, expr) => self.execute_fold_scan(op.clone(), expr, false),
 
             Expr::Index(m, indices) => {
-                let indices = expect_vector(self.execute_expr(indices)?)?;
-
-                if indices.iter().any(|i| !i.is_integer()) {
-                    return Err(String::from("expected indices to be integers"));
-                }
+                let indices = self.execute_expr(indices)?.into_iter_shape()?;
 
                 let m = Matrix::try_from(self.execute_expr(m)?)?;
 
                 let indices: Vec<usize> = indices
+                    .iterator
                     .into_iter()
-                    .map(|v| to_usize_error(&v))
+                    .map(|v| v.and_then(|v| to_usize_error(&v)))
                     .collect::<Result<_, String>>()?;
 
                 match m.get_multiple(&indices) {

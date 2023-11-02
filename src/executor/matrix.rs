@@ -34,7 +34,6 @@ impl Formatter {
 #[derive(Clone, Debug)]
 pub struct Matrix {
     pub values: Vec<Ratio>,
-    pub len: usize,
 }
 
 impl Matrix {
@@ -58,19 +57,19 @@ impl Matrix {
     pub fn make_scalar(value: Ratio) -> Self {
         Self {
             values: vec![value],
-            len: 1,
         }
     }
 
     pub fn make_vector(values: Vec<Ratio>) -> Self {
-        Self {
-            len: values.len(),
-            values,
-        }
+        Self { values }
+    }
+
+    pub fn len(&self) -> usize {
+        self.values.len()
     }
 
     pub fn is_scalar(&self) -> bool {
-        self.values.len() == 1
+        self.len() == 1
     }
 
     pub fn scalar(&self) -> Option<&Ratio> {

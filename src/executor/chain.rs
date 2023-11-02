@@ -3,7 +3,6 @@ use std::{backtrace::Backtrace, convert::TryFrom};
 use crate::ast::Ratio;
 
 use super::{
-    function::Function,
     matrix::{Formatter, Matrix},
     ExecutorResult, Value,
 };
@@ -13,9 +12,6 @@ use dyn_clonable::{dyn_clone::clone_box, *};
 #[clonable]
 pub trait ValueIter: Iterator<Item = Result<Ratio, String>> + Clone {}
 impl<T> ValueIter for T where T: Iterator<Item = Result<Ratio, String>> + Clone {}
-#[clonable]
-pub trait FunctionIter: Iterator<Item = Function> + Clone {}
-impl<T> FunctionIter for T where T: Iterator<Item = Function> + Clone {}
 
 pub struct IterShape {
     pub iterator: Box<dyn ValueIter>,
@@ -55,10 +51,7 @@ impl TryFrom<IterShape> for Matrix {
         let values: Result<Vec<Ratio>, String> = value.iterator.collect();
         let values = values?;
 
-        Ok(Matrix {
-            len: values.len(),
-            values,
-        })
+        Ok(Matrix { values })
     }
 }
 
@@ -94,8 +87,8 @@ impl Chain {
 
             Chain::Iterator(iter_shape) => Ok(iter_shape),
             Chain::Value(Value::Matrix(m)) => Ok(IterShape {
+                len: m.len(),
                 iterator: Box::new(m.values.into_iter().map(Ok)),
-                len: m.len,
             }),
         }
     }
@@ -108,7 +101,7 @@ impl Chain {
         let res = match self {
             Chain::Value(Value::Function(f)) => format!("{}", f),
             Chain::Value(Value::Matrix(m)) => m.format(fmt),
-            Chain::Iterator(IterShape { iterator, len }) => iterator
+            Chain::Iterator(IterShape { iterator, .. }) => iterator
                 .enumerate()
                 .map(|(i, val)| {
                     let val = fmt.apply(&val?);
