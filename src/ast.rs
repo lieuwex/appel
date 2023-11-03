@@ -172,6 +172,7 @@ pub enum Expr {
     Scan(FoldOp, Box<Expr>),
     Index(Box<Expr>, Box<Expr>),       // vector, indices
     Let(String, Box<Expr>, Box<Expr>), // let 0 = 1 in 2
+    Lambda(Vec<String>, Box<Expr>),    // params, body
 }
 
 impl fmt::Display for Expr {
@@ -201,6 +202,10 @@ impl fmt::Display for Expr {
             Expr::Scan(op, expr) => (format!(r"{}\\{}", op, expr), true),
             Expr::Index(vec, indices) => (format!("{}[{}]", vec, indices), false),
             Expr::Let(name, expr, body) => (format!("let {name} = {expr} in {body}"), true),
+            Expr::Lambda(variables, body) => {
+                let params = variables.join(" ");
+                (format!("\\{params} -> {body}"), true)
+            }
         };
 
         if paren {

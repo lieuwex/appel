@@ -395,10 +395,10 @@ impl<'a> Executor<'a> {
         let args: Result<Vec<Matrix>, _> = args.into_iter().map(Matrix::try_from).collect();
         let args = args?;
 
-        if args.len() != f.params.len() {
+        if args.len() != f.params().len() {
             return Err(format!(
                 "expected {} arguments got {}",
-                f.params.len(),
+                f.params().len(),
                 args.len()
             ));
         }
@@ -406,14 +406,14 @@ impl<'a> Executor<'a> {
         let mut ctx = Executor {
             previous: Some(&self),
             variables: f
-                .params
+                .params()
                 .iter()
                 .zip(args)
                 .map(|(param, matrix)| (param.to_string(), Value::Matrix(matrix)))
                 .collect(),
         };
 
-        ctx.execute_expr(&f.expr)
+        ctx.execute_expr(f.expr())
     }
 
     fn execute_unary(&mut self, op: UnOp, expr: &Expr) -> Result<ExecutorResult, String> {
@@ -613,7 +613,7 @@ impl<'a> Executor<'a> {
                 None => Err(format!("variable {} not found", f)),
                 Some(Value::Matrix(_)) => Err(String::from("variable is a matrix")),
                 Some(Value::Function(f)) => {
-                    if f.params.len() != 2 {
+                    if f.params().len() != 2 {
                         return Err(String::from("function does not take 2 params"));
                     }
 
@@ -724,14 +724,19 @@ impl<'a> Executor<'a> {
             Expr::Let(name, expr, body) => {
                 let expr = self.execute_expr(expr)?.into_chain()?;
                 self.call_function(
-                    &Function {
-                        name: String::from("let-binding"),
+                    &Function::Lambda {
                         params: vec![name.clone()],
                         expr: *body.clone(),
                     },
                     iter::once(expr),
                 )
             }
+
+            Expr::Lambda(params, body) => Ok(Value::Function(Function::Lambda {
+                params: params.clone(),
+                expr: (**body).clone(),
+            })
+            .into()),
         }
     }
 
@@ -767,7 +772,7 @@ impl<'a> Executor<'a> {
 
             Statement::FunDeclare(name, params, expr) => {
                 err_var_exists!(name, true);
-                let f = Function {
+                let f = Function::Named {
                     name: name.clone(),
                     params,
                     expr,

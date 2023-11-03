@@ -401,8 +401,17 @@ fn p_expr_12<'a>() -> Parser<'a, Expr> {
     let_binding.name("let_binding") | p_expr_11()
 }
 
+/// Lambda function
+fn p_expr_13<'a>() -> Parser<'a, Expr> {
+    let lambda = ((symbol_both(operator("\\")) * (p_varname() - whitespace(1)).repeat(1..))
+        + (symbol_both(operator("->")) * call(p_expr)))
+    .map(|(variables, body)| Expr::Lambda(variables, Box::new(body)));
+
+    lambda.name("lambda") | p_expr_12()
+}
+
 fn p_expr<'a>() -> Parser<'a, Expr> {
-    p_expr_12()
+    p_expr_13()
 }
 
 /// Function declare
@@ -522,5 +531,17 @@ mod tests {
         assert!(is_ok_some!(parse("let a = 1 in a")));
         assert!(!is_ok_some!(parse("let a in 5")));
         assert!(is_ok_some!(parse("let a = (let b = 6 in b) in a")));
+    }
+
+    #[test]
+    fn test_lambda() {
+        assert!(is_ok_some!(parse(r"f = (\x -> x*2)")));
+        assert!(is_ok_some!(parse(r"f = \x -> x*2")));
+        assert!(is_ok_some!(parse(r"f = \a b -> a + b")));
+
+        assert!(is_ok_some!(parse(r"(\x -> x*2) . 1 2 3")));
+        assert!(!is_ok_some!(parse(r"(\-> x*2) . (1 2 3)")));
+        assert!(!is_ok_some!(parse(r"(\x x*2) . (1 2 3)")));
+        assert!(!is_ok_some!(parse(r"(x -> x*2) . (1 2 3)")));
     }
 }
