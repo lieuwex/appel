@@ -2,6 +2,7 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use std::convert::{TryFrom, TryInto};
 use std::iter;
 use std::ops::{Add, Neg};
+use std::time::Instant;
 
 use crate::ast::*;
 use crate::executor::chain::{Chain, IterShape, ValueIter};
@@ -820,6 +821,26 @@ impl<'a> Executor<'a> {
                     let key = it.pop_front().unwrap();
                     let value = it.pop_front().unwrap();
                     Ok(ExecutorResult::Setting(key, value))
+                }
+
+                "t" | "time" => {
+                    let start = Instant::now();
+                    let parsed = parser::parse(&body)
+                        .or_else(|_| Err("couldn't parse expression".to_owned()))?;
+                    if parsed.is_none() {
+                        return Ok(ExecutorResult::None);
+                    }
+                    eprintln!("parsing took {:?}", start.elapsed());
+
+                    let start = Instant::now();
+                    let res = self.execute(parsed.unwrap(), false)?;
+                    eprintln!("executing took {:?}", start.elapsed());
+
+                    let start = Instant::now();
+                    let m = Matrix::try_from(res)?;
+                    eprintln!("collecting took {:?}", start.elapsed());
+
+                    Ok(ExecutorResult::Value(Value::Matrix(m)))
                 }
 
                 cmd => Err(format!("unknown command {}", cmd)),
