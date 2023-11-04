@@ -3,9 +3,6 @@ use super::value::Value;
 use crate::ast::*;
 
 use std::convert::TryFrom;
-use std::io::Write;
-
-use tabwriter::{Alignment, TabWriter};
 
 #[derive(Clone, Copy)]
 pub enum Formatter {
@@ -34,23 +31,6 @@ impl Formatter {
 #[derive(Clone, Debug)]
 pub struct Matrix {
     pub values: Vec<Ratio>,
-}
-
-impl Matrix {
-    pub fn format(&self, fmt: Formatter) -> String {
-        self.values
-            .iter()
-            .enumerate()
-            .map(|(i, val)| {
-                let val = fmt.apply(val);
-                if i > 0 {
-                    format!(" {}", val)
-                } else {
-                    val
-                }
-            })
-            .collect::<String>()
-    }
 }
 
 impl Matrix {

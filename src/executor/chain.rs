@@ -98,20 +98,28 @@ impl Chain {
     }
 
     pub fn format(self, fmt: Formatter) -> Result<String, String> {
+        macro_rules! format_iter {
+            ($iterator:expr) => {
+                $iterator
+                    .enumerate()
+                    .map(|(i, val)| {
+                        let val = fmt.apply(&val?);
+                        if i > 0 {
+                            Ok(format!(" {}", val))
+                        } else {
+                            Ok(val)
+                        }
+                    })
+                    .collect::<Result<String, String>>()?
+            };
+        }
+
         let res = match self {
             Chain::Value(Value::Function(f)) => format!("{}", f),
-            Chain::Value(Value::Matrix(m)) => m.format(fmt),
-            Chain::Iterator(IterShape { iterator, .. }) => iterator
-                .enumerate()
-                .map(|(i, val)| {
-                    let val = fmt.apply(&val?);
-                    if i > 0 {
-                        Ok(format!(" {}", val))
-                    } else {
-                        Ok(val)
-                    }
-                })
-                .collect::<Result<String, String>>()?,
+            Chain::Value(Value::Matrix(m)) => {
+                format_iter!(m.values.into_iter().map(Result::<_, String>::Ok))
+            }
+            Chain::Iterator(IterShape { iterator, .. }) => format_iter!(iterator),
         };
         Ok(res)
     }
