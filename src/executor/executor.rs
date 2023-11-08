@@ -764,7 +764,7 @@ impl<'a> Executor<'a> {
             Statement::Expr(e) => self.execute_expr(&e),
 
             Statement::Assign(var, val) => {
-                err_var_exists!(var, false);
+                err_var_exists!(var, matches!(val, Expr::Lambda(_, _)));
                 let res = self.execute_expr(&val)?;
                 let val: Value = res.clone().into_chain()?.try_into()?;
                 self.variables.insert(var, val);
