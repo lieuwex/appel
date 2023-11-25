@@ -93,8 +93,8 @@ fn call_binary(op: BinOp, a: Chain, b: Chain) -> Result<ExecutorResult, String> 
         if a.len == b.len {
             let values = (a.iterator)
                 .zip(b.iterator)
-                .map(|(a, b)| (a.unwrap(), b.unwrap()))
-                .map(move |(a, b): (Rational, Rational)| f(a, b).map(Ratio::from));
+                .map(|(a, b)| Ok((a?, b?)))
+                .map(move |p| p.and_then(|(a, b)| f(a, b).map(Ratio::from)));
 
             let matrix = Chain::Iterator(IterShape {
                 iterator: Box::new(values),
@@ -103,10 +103,10 @@ fn call_binary(op: BinOp, a: Chain, b: Chain) -> Result<ExecutorResult, String> 
             return Ok(matrix.into_result());
         }
 
-        let (scalar, non_scalar, scalar_is_left) = if let Some(s) = a.scalar() {
-            (s, b, true)
-        } else if let Some(s) = b.scalar() {
-            (s, a, false)
+        let (scalar, non_scalar, scalar_is_left) = if a.is_scalar() {
+            (a.into_scalar().unwrap(), b, false)
+        } else if b.is_scalar() {
+            (b.into_scalar().unwrap(), a, false)
         } else {
             return Err(String::from("rank mismatch"));
         };
