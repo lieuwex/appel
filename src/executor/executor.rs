@@ -288,6 +288,22 @@ fn call_binary(op: BinOp, a: Chain, b: Chain) -> Result<ExecutorResult, String> 
             .into_result())
         }
 
+        BinOp::Union => {
+            let a: Result<Vec<_>, String> = a.iterator.collect();
+            let a = a?;
+
+            let new_values: Vec<_> = b
+                .iterator
+                .filter(|v| v.as_ref().map_or(true, |v| !a.contains(&v)))
+                .collect();
+
+            Ok(Chain::Iterator(IterShape {
+                len: a.len() + new_values.len(),
+                iterator: Box::new(a.into_iter().map(Result::Ok).chain(new_values.into_iter())),
+            })
+            .into_result())
+        }
+
         BinOp::Mask => {
             // TODO: only LHS has to be collected
             let values: Vec<_> = (a.iterator)
