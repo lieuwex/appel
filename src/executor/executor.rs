@@ -145,8 +145,8 @@ fn call_binary(op: BinOp, a: Chain, b: Chain) -> Result<ExecutorResult, String> 
         BinOp::Mul => apply_ok!(|a, b| a * b),
         BinOp::Div => apply_ok!(|a, b| a / b),
         BinOp::Mod => apply_ok!(|a: Ratio, b: Ratio| (a / &b).rem_trunc() * b),
-        BinOp::Pow => apply!(|a, b| pow(a, b)),
-        BinOp::Log => apply!(|a, b| log(a, b)),
+        BinOp::Pow => apply!(pow),
+        BinOp::Log => apply!(log),
         BinOp::CompOp(x) => apply_ok!(get_comp_op_fn(x)),
 
         BinOp::Concat => {
@@ -162,7 +162,7 @@ fn call_binary(op: BinOp, a: Chain, b: Chain) -> Result<ExecutorResult, String> 
             let n = into_integer_error(a)?;
 
             let (n, at_start) = if (&n).signum() == -1 {
-                (n.neg().into(), false)
+                (n.neg(), false)
             } else {
                 (n, true)
             };
@@ -204,7 +204,7 @@ fn call_binary(op: BinOp, a: Chain, b: Chain) -> Result<ExecutorResult, String> 
 
             let radix = a
                 .to_u32()
-                .and_then(|r| if 2 <= r && r <= 256 { Some(r) } else { None })
+                .filter(|r| (2..=256).contains(r))
                 .ok_or(String::from("radix must be greater than or equal to 2"))?;
 
             let (sign, bits) = b.to_radix_be(radix);
@@ -245,7 +245,7 @@ fn call_binary(op: BinOp, a: Chain, b: Chain) -> Result<ExecutorResult, String> 
 
             let radix = a
                 .to_u32()
-                .filter(|&r| 2 <= r && r <= 256)
+                .filter(|r| (2..=256).contains(r))
                 .ok_or(String::from("radix must be greater than or equal to 2"))?;
 
             let sign = if b.iter().any(|b| b.to_integer().sign() == Sign::Minus) {
@@ -291,12 +291,12 @@ fn call_binary(op: BinOp, a: Chain, b: Chain) -> Result<ExecutorResult, String> 
 
             let new_values: Vec<_> = b
                 .iterator
-                .filter(|v| v.as_ref().map_or(true, |v| !a.contains(&v)))
+                .filter(|v| v.as_ref().map_or(true, |v| !a.contains(v)))
                 .collect();
 
             Ok(Chain::Iterator(IterShape {
                 len: a.len() + new_values.len(),
-                iterator: Box::new(a.into_iter().map(Result::Ok).chain(new_values.into_iter())),
+                iterator: Box::new(a.into_iter().map(Result::Ok).chain(new_values)),
             })
             .into_result())
         }
@@ -418,7 +418,7 @@ impl<'a> Executor<'a> {
         }
 
         let mut ctx = Executor {
-            previous: Some(&self),
+            previous: Some(self),
             variables: f
                 .params()
                 .iter()
@@ -505,7 +505,7 @@ impl<'a> Executor<'a> {
                 let s = expect_scalar(res)?;
                 let upper = to_usize_error(&s)?;
 
-                let it = (1..=upper).map(|v| Ratio::from_usize(v).ok_or_else(|| String::new()));
+                let it = (1..=upper).map(|v| Ratio::from_usize(v).ok_or_else(String::new));
                 let len = upper;
 
                 Ok(Chain::make_vector(Box::new(it), len).into_result())
@@ -651,7 +651,7 @@ impl<'a> Executor<'a> {
                     let res = self.call_function(&f, iter::once(Chain::make_scalar(value)))?;
                     res.into_iter_shape()?
                         .into_scalar()
-                        .ok_or(format!("Function returned non-scalar in map"))
+                        .ok_or("Function returned non-scalar in map".to_string())
                 })();
 
                 match res {
@@ -681,7 +681,7 @@ impl<'a> Executor<'a> {
 
             Expr::Vector(v) => {
                 let expressions: Vec<_> = v
-                    .into_iter()
+                    .iter()
                     .map(|e| Ok(self.execute_expr(e)?.unwrap_value()))
                     .collect::<Result<_, String>>()?;
 
@@ -722,7 +722,6 @@ impl<'a> Executor<'a> {
 
                 let indices: Vec<usize> = indices
                     .iterator
-                    .into_iter()
                     .map(|v| v.and_then(|v| to_usize_error(&v)))
                     .collect::<Result<_, String>>()?;
 
@@ -794,8 +793,8 @@ impl<'a> Executor<'a> {
 
             Statement::InternalCommand(command, body) => match command.as_str() {
                 "n" | "number" => {
-                    let parsed = parser::parse(&body)
-                        .or_else(|_| Err("couldn't parse expression".to_owned()))?;
+                    let parsed =
+                        parser::parse(&body).map_err(|_| "couldn't parse expression".to_owned())?;
                     if parsed.is_none() {
                         return Ok(ExecutorResult::None);
                     }
@@ -835,8 +834,8 @@ impl<'a> Executor<'a> {
 
                 "t" | "time" => {
                     let start = Instant::now();
-                    let parsed = parser::parse(&body)
-                        .or_else(|_| Err("couldn't parse expression".to_owned()))?;
+                    let parsed =
+                        parser::parse(&body).map_err(|_| "couldn't parse expression".to_owned())?;
                     if parsed.is_none() {
                         return Ok(ExecutorResult::None);
                     }

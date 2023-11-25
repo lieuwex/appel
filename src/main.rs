@@ -1,3 +1,5 @@
+#![allow(clippy::redundant_closure_call)]
+
 mod ast;
 mod executor;
 mod parser;
@@ -18,11 +20,10 @@ struct State {
 
 impl State {
     fn exec_line(&mut self, line: &str) -> Result<String, String> {
-        let (line, silent) = if line.starts_with('#') {
-            (&line[1..], true)
-        } else {
-            (line, false)
-        };
+        let (line, silent) = line
+            .strip_prefix('#')
+            .map(|line| (line, true))
+            .unwrap_or((line, false));
 
         let parsed = match parser::parse(line) {
             Err(e) => return Err(format!("error while parsing: {}", e)),
@@ -50,7 +51,7 @@ impl State {
                                 let precision = n
                                     .trim()
                                     .parse::<usize>()
-                                    .or_else(|_| Err("conversion error".to_owned()))?;
+                                    .map_err(|_| "conversion error".to_owned())?;
                                 Formatter::Float(Some(precision))
                             }
                         };
@@ -106,14 +107,13 @@ fn main() -> Result<(), String> {
 
     for (fname, script) in scripts.into_iter() {
         for (i, line) in script.lines().enumerate() {
-            match state.exec_line(line) {
-                Err(e) => eprintln!(
+            if let Err(e) = state.exec_line(line) {
+                eprintln!(
                     "error while executing script {} line {}: {}\n",
                     fname,
                     i + 1,
                     e
-                ),
-                Ok(_) => {}
+                )
             }
         }
     }

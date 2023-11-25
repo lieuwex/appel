@@ -70,7 +70,7 @@ impl Matrix {
 
     pub fn get_multiple(&self, indices: &[usize]) -> Option<Vec<Ratio>> {
         indices
-            .into_iter()
+            .iter()
             .map(|i| self.values.get(*i).cloned())
             .collect()
     }

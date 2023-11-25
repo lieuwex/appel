@@ -117,9 +117,9 @@ fn integer_hex(s: &[char]) -> Result<Integer, &str> {
 
     let from_hex_digit = |c: char| {
         let c = c.to_ascii_lowercase();
-        if '0' <= c && c <= '9' {
+        if c.is_ascii_digit() {
             Ok((c as u8) - b'0')
-        } else if 'a' <= c && c <= 'f' {
+        } else if ('a'..='f').contains(&c) {
             Ok((c as u8) - b'a' + 10)
         } else {
             Err("Invalid argument to from_hex_digit")
@@ -151,13 +151,13 @@ fn integer_hex(s: &[char]) -> Result<Integer, &str> {
 fn p_hexdigit<'a>() -> Parser<'a, char> {
     is_a(|c: char| {
         let c = c.to_ascii_lowercase();
-        ('0' <= c && c <= '9') || ('a' <= c && c <= 'f')
+        c.is_ascii_digit() || ('a'..='f').contains(&c)
     })
     .name("hex")
 }
 
 fn p_digit<'a>() -> Parser<'a, char> {
-    is_a(|c| '0' <= c && c <= '9').name("digit")
+    is_a(|c: char| c.is_ascii_digit()).name("digit")
 }
 
 fn p_posexp<'a>() -> Parser<'a, Integer> {
@@ -207,15 +207,15 @@ fn p_float<'a>() -> Parser<'a, Atom> {
         let ten = Integer::from(10u32);
         let comma_exp = ten.clone().pow(post.len() as u32);
         let base_num = integer_decimal(&pre)? * &comma_exp + integer_decimal(&post)?;
-        let base_rat = Ratio::from((Integer::from(base_num), Integer::from(comma_exp)));
+        let base_rat = Ratio::from((base_num, comma_exp));
         let res = if (&exp).signum() == -1 {
             let exp = (-exp).to_u32().unwrap();
-            let exp_pow = Integer::from(ten.pow(exp));
+            let exp_pow = ten.pow(exp);
             let exp_rat = Rational::from((Integer::one(), exp_pow));
             base_rat * exp_rat
         } else {
             let exp = exp.to_u32().unwrap();
-            base_rat * Ratio::from(Integer::from(ten.pow(exp)))
+            base_rat * Ratio::from(ten.pow(exp))
         };
         Ok::<_, ParseIntegerError>(res)
     });
