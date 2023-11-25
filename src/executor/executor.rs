@@ -257,10 +257,7 @@ fn call_binary(op: BinOp, a: Chain, b: Chain) -> Result<ExecutorResult, String> 
             let bits: Vec<u8> = b.iter().map(|b| b.to_integer().to_u8().unwrap()).collect();
 
             let packed = BigInt::from_radix_be(sign, &bits, radix);
-            let int = match packed {
-                None => return Err(String::from("couldn't convert bits to int")),
-                Some(i) => i,
-            };
+            let int = packed.ok_or(String::from("couldn't convert bits to int"))?;
 
             let int = int.to_string();
             let int = Integer::from_str_radix(&int, 10).unwrap();
@@ -590,10 +587,7 @@ impl<'a> Executor<'a> {
                 it.try_fold(
                     ExecutorResult::Chain(Chain::make_scalar(first?)),
                     |acc, item| -> Result<ExecutorResult, String> {
-                        // TODO: I feel like this can be optimised
-                        let acc = acc.into_iter_shape()?.scalar().unwrap();
-                        let acc = Chain::make_scalar(acc);
-
+                        let acc = acc.into_chain()?;
                         let item = Chain::make_scalar(item?);
                         f(acc, item)
                     },
@@ -604,9 +598,9 @@ impl<'a> Executor<'a> {
                 accum.push(it.next().unwrap().unwrap());
 
                 loop {
-                    let item = match it.next().transpose()? {
+                    let item = match it.next() {
                         None => break Ok(Matrix { values: accum }.into()),
-                        Some(i) => i,
+                        Some(i) => i?,
                     };
 
                     let prev = Chain::make_scalar(accum.last().unwrap().clone());
