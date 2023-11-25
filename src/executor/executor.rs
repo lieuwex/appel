@@ -686,10 +686,10 @@ impl<'a> Executor<'a> {
             }
 
             Expr::Vector(v) => {
-                let mut expressions = Vec::with_capacity(v.len());
-                for e in v.into_iter() {
-                    expressions.push(self.execute_expr(e)?.unwrap_value());
-                }
+                let expressions: Vec<_> = v
+                    .into_iter()
+                    .map(|e| Ok(self.execute_expr(e)?.unwrap_value()))
+                    .collect::<Result<_, String>>()?;
 
                 match expressions[0].clone() {
                     Value::Function(f) => {
