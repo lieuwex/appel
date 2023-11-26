@@ -272,7 +272,8 @@ fn p_expr_2<'a>() -> Parser<'a, Expr> {
         | symbol_both(operator("cos")).map(|_| UnOp::Cos)
         | symbol_both(operator("tan")).map(|_| UnOp::Tan)
         | symbol_both(operator("floor")).map(|_| UnOp::Floor)
-        | symbol_both(operator("ceil")).map(|_| UnOp::Ceil);
+        | symbol_both(operator("ceil")).map(|_| UnOp::Ceil)
+        | symbol_both(operator("round")).map(|_| UnOp::Round);
 
     (unary.repeat(0..) + call(p_expr_1))
         .name("unary")

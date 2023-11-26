@@ -513,6 +513,7 @@ impl<'a> Executor<'a> {
 
             UnOp::Floor => for_all_ok!(|x: Ratio| x.floor()),
             UnOp::Ceil => for_all_ok!(|x: Ratio| x.ceil()),
+            UnOp::Round => for_all_ok!(|x: Ratio| x.round()),
             UnOp::Abs => for_all_ok!(|x: Ratio| x.abs()),
             UnOp::Sin | UnOp::Cos | UnOp::Tan => for_all!(move |x: Ratio| {
                 let f = to_float(x);

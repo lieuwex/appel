@@ -36,6 +36,7 @@ pub enum UnOp {
     Down,
     Floor,
     Ceil,
+    Round,
     Sign,
 }
 
@@ -60,6 +61,7 @@ impl fmt::Display for UnOp {
             UnOp::Down => write!(f, "down "),
             UnOp::Floor => write!(f, "floor "),
             UnOp::Ceil => write!(f, "ceil "),
+            UnOp::Round => write!(f, "round "),
             UnOp::Sign => write!(f, "sgn "),
         }
     }
