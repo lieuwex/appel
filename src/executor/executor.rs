@@ -84,17 +84,21 @@ fn into_integer_error(iter_shape: IterShape) -> Result<Integer, String> {
     Ok(n)
 }
 
-fn get_comp_op_fn(op: CompOp) -> impl Fn(Ratio, Ratio) -> Ratio {
-    let fun: &dyn Fn(Ratio, Ratio) -> bool = match op {
-        CompOp::Eq => &|a, b| a == b,
-        CompOp::Neq => &|a, b| a != b,
-        CompOp::Lt => &|a, b| a < b,
-        CompOp::Le => &|a, b| a <= b,
-        CompOp::Gt => &|a, b| a > b,
-        CompOp::Ge => &|a, b| a >= b,
-    };
+fn get_comp_op_fn(op: CompOp) -> fn(Ratio, Ratio) -> Ratio {
+    macro_rules! op {
+        ($op:tt) => {
+            |a, b| Ratio::from(a $op b)
+        }
+    }
 
-    move |a: Ratio, b: Ratio| -> Ratio { Ratio::from(fun(a, b) as u8) }
+    match op {
+        CompOp::Eq => op!(==),
+        CompOp::Neq => op!(!=),
+        CompOp::Lt => op!(<),
+        CompOp::Le => op!(<=),
+        CompOp::Gt => op!(>),
+        CompOp::Ge => op!(>=),
+    }
 }
 
 fn call_binary(op: BinOp, a: Chain, b: Chain) -> Result<ExecutorResult, String> {
