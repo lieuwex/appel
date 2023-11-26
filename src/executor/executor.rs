@@ -458,19 +458,25 @@ impl<'a> Executor<'a> {
     fn execute_unary(&mut self, op: UnOp, expr: &Expr) -> Result<ExecutorResult, String> {
         let res = self.execute_expr(expr)?;
 
+        fn for_all(
+            res: ExecutorResult,
+            f: impl Fn(Rational) -> Result<Rational, String> + Clone + 'static,
+        ) -> Result<ExecutorResult, String> {
+            let IterShape { iterator, len } = res.into_iter_shape()?;
+
+            let values = iterator.map(move |v| v.and_then(&f));
+
+            let new = Chain::Iterator(IterShape {
+                iterator: Box::new(values),
+                len,
+            });
+            Ok(new.into_result())
+        }
+
         macro_rules! for_all {
-            ($f:expr) => {{
-                let IterShape { iterator, len } = res.into_iter_shape()?;
-
-                // TODO: remove unwrap
-                let values = iterator.map(|x| x.unwrap()).map($f);
-
-                let new = Chain::Iterator(IterShape {
-                    iterator: Box::new(values),
-                    len,
-                });
-                Ok(new.into_result())
-            }};
+            ($f:expr) => {
+                for_all(res, $f)
+            };
         }
         macro_rules! for_all_ok {
             ($f:expr) => {
