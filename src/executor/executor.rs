@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::convert::{TryFrom, TryInto};
 use std::iter;
-use std::ops::{Add, Neg};
+use std::ops::Neg;
 use std::time::Instant;
 
 use crate::ast::*;
@@ -11,7 +11,7 @@ use crate::parser;
 use num_bigint::{BigInt, Sign};
 use num_traits::*;
 use replace_with::replace_with_or_default_and_return;
-use rug::{Float, Integer, Rational};
+use rug::{Assign, Float, Integer, Rational};
 
 use rand::prelude::*;
 
@@ -22,6 +22,13 @@ use super::value::Value;
 
 const FLOAT_PRECISION: u32 = 100;
 
+fn to_float<T>(val: T) -> Float
+where
+    Float: Assign<T>,
+{
+    Float::with_val(FLOAT_PRECISION, val)
+}
+
 fn pow(a: Ratio, b: Ratio) -> Result<Ratio, String> {
     let pair = b.is_integer().then(|| (b.to_u32(), b.to_i32()));
 
@@ -29,8 +36,8 @@ fn pow(a: Ratio, b: Ratio) -> Result<Ratio, String> {
         Some((Some(b), _)) => Ok(a.pow(b)),
         Some((_, Some(b))) => Ok(a.pow(b)),
         _ => {
-            let a = Float::new(FLOAT_PRECISION).add(a);
-            let b = Float::new(FLOAT_PRECISION).add(b);
+            let a = to_float(a);
+            let b = to_float(b);
 
             a.pow(b)
                 .to_rational()
@@ -39,8 +46,8 @@ fn pow(a: Ratio, b: Ratio) -> Result<Ratio, String> {
     }
 }
 fn log(base: Ratio, n: Ratio) -> Result<Ratio, String> {
-    let base = Float::new(FLOAT_PRECISION).add(base);
-    let n = Float::new(FLOAT_PRECISION).add(n);
+    let base = to_float(base);
+    let n = to_float(n);
 
     let res = n.log2() / base.log2();
     res.to_rational()
@@ -499,7 +506,7 @@ impl<'a> Executor<'a> {
             UnOp::Ceil => for_all_ok!(|x: Ratio| x.ceil()),
             UnOp::Abs => for_all_ok!(|x: Ratio| x.abs()),
             UnOp::Sin | UnOp::Cos | UnOp::Tan => for_all!(move |x: Ratio| {
-                let f = Float::new(FLOAT_PRECISION).add(x);
+                let f = to_float(x);
                 let res = match op {
                     UnOp::Sin => f.sin(),
                     UnOp::Cos => f.cos(),
