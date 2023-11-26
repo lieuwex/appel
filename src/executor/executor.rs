@@ -144,6 +144,16 @@ fn call_binary(op: BinOp, a: Chain, b: Chain) -> Result<ExecutorResult, String> 
         Ok(matrix.into_result())
     }
 
+    macro_rules! safe_div {
+        ($a:expr, $b:expr) => {{
+            if $b.is_zero() {
+                Err(String::from("division by zero"))
+            } else {
+                Ok($a / $b)
+            }
+        }};
+    }
+
     macro_rules! apply {
         ($f:expr) => {
             apply(a, b, $f)
@@ -154,13 +164,12 @@ fn call_binary(op: BinOp, a: Chain, b: Chain) -> Result<ExecutorResult, String> 
             apply!(move |a, b| Ok($f(a, b)))
         };
     }
-
     match op {
         BinOp::Add => apply_ok!(|a, b| a + b),
         BinOp::Sub => apply_ok!(|a, b| a - b),
         BinOp::Mul => apply_ok!(|a, b| a * b),
-        BinOp::Div => apply_ok!(|a, b| a / b),
-        BinOp::Mod => apply_ok!(|a: Ratio, b: Ratio| (a / &b).rem_trunc() * b),
+        BinOp::Div => apply!(|a, b| safe_div!(a, b)),
+        BinOp::Mod => apply!(|a: Ratio, b: Ratio| safe_div!(a, &b).map(|v| v.rem_trunc() * b)),
         BinOp::Pow => apply!(pow),
         BinOp::Log => apply!(log),
         BinOp::CompOp(x) => apply_ok!(get_comp_op_fn(x)),
