@@ -23,11 +23,20 @@ use super::value::Value;
 const FLOAT_PRECISION: u32 = 100;
 
 fn pow(a: Ratio, b: Ratio) -> Result<Ratio, String> {
-    let b = b
-        .to_i32()
-        .ok_or_else(|| "error while converting to i32".to_owned())?;
+    let pair = b.is_integer().then(|| (b.to_u32(), b.to_i32()));
 
-    Ok(Ratio::from(a.pow(b)))
+    match pair {
+        Some((Some(b), _)) => Ok(a.pow(b)),
+        Some((_, Some(b))) => Ok(a.pow(b)),
+        _ => {
+            let a = Float::new(FLOAT_PRECISION).add(a);
+            let b = Float::new(FLOAT_PRECISION).add(b);
+
+            a.pow(b)
+                .to_rational()
+                .ok_or_else(|| "result is not finite".to_owned())
+        }
+    }
 }
 fn log(base: Ratio, n: Ratio) -> Result<Ratio, String> {
     let base = Float::new(FLOAT_PRECISION).add(base);
