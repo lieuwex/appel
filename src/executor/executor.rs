@@ -435,7 +435,7 @@ impl<'a> Executor<'a> {
         f: &Function,
         args: impl IntoIterator<Item = Chain>,
     ) -> Result<ExecutorResult, String> {
-        let args: Result<Vec<Matrix>, _> = args.into_iter().map(Matrix::try_from).collect();
+        let args: Result<Vec<Value>, _> = args.into_iter().map(Value::try_from).collect();
         let args = args?;
 
         if args.len() != f.params().len() {
@@ -452,7 +452,7 @@ impl<'a> Executor<'a> {
                 .params()
                 .iter()
                 .zip(args)
-                .map(|(param, matrix)| (param.to_string(), Value::Matrix(matrix)))
+                .map(|(param, value)| (param.to_string(), value))
                 .collect(),
         };
 
