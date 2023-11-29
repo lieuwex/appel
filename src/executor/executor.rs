@@ -899,8 +899,8 @@ impl<'a> Executor<'a> {
                 .clone()
                 .and_then(|r| r.into_chain())
                 .and_then(Value::try_from);
-            if let Ok(Value::Matrix(m)) = val {
-                self.variables.insert(String::from("_"), Value::Matrix(m));
+            if let Ok(val) = val {
+                self.variables.insert(String::from("_"), val);
             }
         }
 
