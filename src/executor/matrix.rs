@@ -29,23 +29,19 @@ impl Formatter {
 }
 
 #[derive(Clone, Debug)]
-pub struct Matrix {
-    pub values: Vec<Ratio>,
-}
+pub struct Matrix(Vec<Ratio>);
 
 impl Matrix {
     pub fn make_scalar(value: Ratio) -> Self {
-        Self {
-            values: vec![value],
-        }
+        Self(vec![value])
     }
 
     pub fn make_vector(values: Vec<Ratio>) -> Self {
-        Self { values }
+        Self(values)
     }
 
     pub fn len(&self) -> usize {
-        self.values.len()
+        self.0.len()
     }
 
     pub fn is_scalar(&self) -> bool {
@@ -53,26 +49,38 @@ impl Matrix {
     }
 
     pub fn scalar(&self) -> Option<&Ratio> {
-        self.is_scalar().then(|| &self.values[0])
+        self.is_scalar().then(|| &self.0[0])
     }
 
     pub fn into_scalar(self) -> Option<Ratio> {
-        self.is_scalar()
-            .then(|| self.values.into_iter().nth(0).unwrap())
+        self.is_scalar().then(|| self.0.into_iter().nth(0).unwrap())
     }
 
     pub fn get_at(&self, i: usize) -> Option<&Ratio> {
-        self.values.get(i)
+        self.0.get(i)
     }
     pub fn take_at(self, i: usize) -> Option<Ratio> {
-        self.values.into_iter().nth(i)
+        self.0.into_iter().nth(i)
     }
 
     pub fn get_multiple(&self, indices: &[usize]) -> Option<Vec<Ratio>> {
-        indices
-            .iter()
-            .map(|i| self.values.get(*i).cloned())
-            .collect()
+        indices.iter().map(|i| self.0.get(*i).cloned()).collect()
+    }
+
+    pub fn iter(&self) -> std::slice::Iter<Ratio> {
+        self.0.iter()
+    }
+    pub fn iter_mut(&mut self) -> std::slice::IterMut<Ratio> {
+        self.0.iter_mut()
+    }
+}
+
+impl IntoIterator for Matrix {
+    type Item = Ratio;
+    type IntoIter = std::vec::IntoIter<Self::Item>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.into_iter()
     }
 }
 
@@ -95,7 +103,6 @@ impl TryFrom<ExecutorResult> for Matrix {
             ExecutorResult::Info(_) => Err(String::from("expected value, got an info string")),
             ExecutorResult::Setting(_, _) => Err(String::from("expected value, got a setting")),
             ExecutorResult::Chain(c) => Matrix::try_from(Value::try_from(c)?),
-            ExecutorResult::Value(val) => Matrix::try_from(val),
         }
     }
 }

@@ -51,7 +51,7 @@ impl TryFrom<IterShape> for Matrix {
         let values: Result<Vec<Ratio>, String> = value.iterator.collect();
         let values = values?;
 
-        Ok(Matrix { values })
+        Ok(Matrix::make_vector(values))
     }
 }
 
@@ -88,13 +88,9 @@ impl Chain {
             Chain::Iterator(iter_shape) => Ok(iter_shape),
             Chain::Value(Value::Matrix(m)) => Ok(IterShape {
                 len: m.len(),
-                iterator: Box::new(m.values.into_iter().map(Ok)),
+                iterator: Box::new(m.into_iter().map(Ok)),
             }),
         }
-    }
-
-    pub fn into_result(self) -> ExecutorResult {
-        ExecutorResult::Chain(self)
     }
 
     pub fn format(self, fmt: Formatter) -> Result<String, String> {
@@ -117,7 +113,7 @@ impl Chain {
         let res = match self {
             Chain::Value(Value::Function(f)) => format!("{}", f),
             Chain::Value(Value::Matrix(m)) => {
-                format_iter!(m.values.into_iter().map(Result::<_, String>::Ok))
+                format_iter!(m.into_iter().map(Result::<_, String>::Ok))
             }
             Chain::Iterator(IterShape { iterator, .. }) => format_iter!(iterator),
         };
@@ -145,6 +141,12 @@ impl TryFrom<Chain> for Matrix {
             Value::Function(_) => Err(String::from("expected matrix, got a function")),
             Value::Matrix(m) => Ok(m),
         }
+    }
+}
+
+impl From<Chain> for ExecutorResult {
+    fn from(c: Chain) -> Self {
+        ExecutorResult::Chain(c)
     }
 }
 

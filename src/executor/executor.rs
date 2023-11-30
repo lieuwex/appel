@@ -120,7 +120,7 @@ fn call_binary(op: BinOp, a: Chain, b: Chain) -> Result<ExecutorResult, String> 
                 iterator: Box::new(values),
                 len: a.len,
             });
-            return Ok(matrix.into_result());
+            return Ok(matrix.into());
         }
 
         let (scalar, non_scalar, scalar_is_left) = if a.is_scalar() {
@@ -145,7 +145,7 @@ fn call_binary(op: BinOp, a: Chain, b: Chain) -> Result<ExecutorResult, String> 
             len: non_scalar.len,
         });
 
-        Ok(matrix.into_result())
+        Ok(matrix.into())
     }
 
     macro_rules! safe_div {
@@ -184,7 +184,7 @@ fn call_binary(op: BinOp, a: Chain, b: Chain) -> Result<ExecutorResult, String> 
                 iterator: Box::new(values),
                 len: a.len + b.len,
             })
-            .into_result())
+            .into())
         }
 
         BinOp::Drop => {
@@ -206,7 +206,7 @@ fn call_binary(op: BinOp, a: Chain, b: Chain) -> Result<ExecutorResult, String> 
                 (Box::new(b.iterator.take(amount)), amount)
             };
 
-            Ok(Chain::Iterator(IterShape { iterator, len }).into_result())
+            Ok(Chain::Iterator(IterShape { iterator, len }).into())
         }
 
         BinOp::Rho => {
@@ -221,7 +221,7 @@ fn call_binary(op: BinOp, a: Chain, b: Chain) -> Result<ExecutorResult, String> 
                 iterator: Box::new(values),
                 len,
             })
-            .into_result())
+            .into())
         }
 
         BinOp::Unpack => {
@@ -251,7 +251,7 @@ fn call_binary(op: BinOp, a: Chain, b: Chain) -> Result<ExecutorResult, String> 
                 })
                 .map(Result::Ok);
 
-            Ok(Chain::make_vector(Box::new(values), len).into_result())
+            Ok(Chain::make_vector(Box::new(values), len).into())
         }
         BinOp::Pack => {
             let a = into_integer_error(a)?;
@@ -311,7 +311,7 @@ fn call_binary(op: BinOp, a: Chain, b: Chain) -> Result<ExecutorResult, String> 
                 iterator: Box::new(values),
                 len: a.len,
             })
-            .into_result())
+            .into())
         }
 
         BinOp::Union => {
@@ -327,7 +327,7 @@ fn call_binary(op: BinOp, a: Chain, b: Chain) -> Result<ExecutorResult, String> 
                 len: a.len() + new_values.len(),
                 iterator: Box::new(a.into_iter().map(Result::Ok).chain(new_values)),
             })
-            .into_result())
+            .into())
         }
 
         BinOp::Mask => {
@@ -377,7 +377,7 @@ fn call_binary(op: BinOp, a: Chain, b: Chain) -> Result<ExecutorResult, String> 
                 Box::new(b.iterator.chain(repeated))
             };
 
-            Ok(Chain::make_vector(values, new_len).into_result())
+            Ok(Chain::make_vector(values, new_len).into())
         }
 
         BinOp::Map => unreachable!(),
@@ -474,7 +474,7 @@ impl<'a> Executor<'a> {
                 iterator: Box::new(values),
                 len,
             });
-            Ok(new.into_result())
+            Ok(new.into())
         }
 
         macro_rules! for_all {
@@ -544,7 +544,7 @@ impl<'a> Executor<'a> {
                 let it = (1..=upper).map(|v| Ratio::from_usize(v).ok_or_else(String::new));
                 let len = upper;
 
-                Ok(Chain::make_vector(Box::new(it), len).into_result())
+                Ok(Chain::make_vector(Box::new(it), len).into())
             }
 
             UnOp::Rho => {
@@ -555,12 +555,12 @@ impl<'a> Executor<'a> {
             UnOp::Rev => {
                 let m = Matrix::try_from(res)?;
                 let len = m.len();
-                let values = m.values.into_iter().rev().map(Result::Ok);
+                let values = m.into_iter().rev().map(Result::Ok);
                 Ok(Chain::Iterator(IterShape {
                     len,
                     iterator: Box::new(values),
                 })
-                .into_result())
+                .into())
             }
 
             UnOp::Up | UnOp::Down => {
@@ -586,7 +586,7 @@ impl<'a> Executor<'a> {
                     iterator: Box::new(values),
                     len,
                 })
-                .into_result())
+                .into())
             }
         }
     }
@@ -594,8 +594,8 @@ impl<'a> Executor<'a> {
     fn execute_binary(&mut self, op: BinOp, a: &Expr, b: &Expr) -> Result<ExecutorResult, String> {
         // (a/b)^(c/d) = (\sqrt d {a^c}) / (\sqrt d {b ^c})
 
-        let a = self.execute_expr(a)?.into_chain()?;
-        let b = self.execute_expr(b)?.into_chain()?;
+        let a = self.execute_expr(a)?.try_into()?;
+        let b = self.execute_expr(b)?.try_into()?;
         call_binary(op, a, b)
     }
 
@@ -637,7 +637,7 @@ impl<'a> Executor<'a> {
 
                 loop {
                     let item = match it.next() {
-                        None => break Ok(Matrix { values: accum }.into()),
+                        None => break Ok(Matrix::make_vector(accum).into()),
                         Some(i) => i?,
                     };
 
@@ -677,13 +677,13 @@ impl<'a> Executor<'a> {
     }
 
     fn execute_map(&mut self, a: &Expr, b: &Expr) -> Result<ExecutorResult, String> {
-        let f = match self.execute_expr(a)?.unwrap_value() {
-            Value::Function(f) => f,
+        let f = match Value::try_from(self.execute_expr(a)?) {
+            Ok(Value::Function(f)) => f,
             _ => return Err(String::from("expected left hand to be a function")),
         };
         let mut x = Matrix::try_from(self.execute_expr(b)?)?;
 
-        for value in &mut x.values {
+        for value in x.iter_mut() {
             replace_with_or_default_and_return(value, |value| {
                 let res: Result<Rational, String> = (|| {
                     let res = self.call_function(&f, iter::once(Chain::make_scalar(value)))?;
@@ -711,16 +711,13 @@ impl<'a> Executor<'a> {
                     Some(var) => var.clone(),
                 };
 
-                match var {
-                    Value::Matrix(m) => Ok(m.into()),
-                    Value::Function(f) => Ok(f.into()),
-                }
+                Ok(var.into())
             }
 
             Expr::Vector(v) => {
                 let expressions: Vec<_> = v
                     .iter()
-                    .map(|e| Ok(self.execute_expr(e)?.unwrap_value()))
+                    .map(|e| Value::try_from(self.execute_expr(e)?))
                     .collect::<Result<_, String>>()?;
 
                 match expressions[0].clone() {
@@ -742,7 +739,7 @@ impl<'a> Executor<'a> {
                             }
                         });
 
-                        Ok(Chain::make_vector(Box::new(values), len).into_result())
+                        Ok(Chain::make_vector(Box::new(values), len).into())
                     }
                 }
             }
@@ -770,7 +767,7 @@ impl<'a> Executor<'a> {
             }
 
             Expr::Let(name, expr, body) => {
-                let expr = self.execute_expr(expr)?.into_chain()?;
+                let expr: Chain = self.execute_expr(expr)?.try_into()?;
                 self.call_function(
                     &Function::Lambda {
                         params: vec![name.clone()],
@@ -813,7 +810,7 @@ impl<'a> Executor<'a> {
             Statement::Assign(var, val) => {
                 err_var_exists!(var, matches!(val, Expr::Lambda(_, _)));
                 let res = self.execute_expr(&val)?;
-                let val: Value = res.clone().into_chain()?.try_into()?;
+                let val: Value = res.clone().try_into()?;
                 self.variables.insert(var, val);
                 Ok(res)
             }
@@ -839,7 +836,6 @@ impl<'a> Executor<'a> {
                     let res = self.execute(parsed.unwrap(), false)?;
 
                     let s = Matrix::try_from(res)?
-                        .values
                         .iter()
                         .map(|x| x.to_f64())
                         .enumerate()
@@ -879,15 +875,18 @@ impl<'a> Executor<'a> {
                     }
                     eprintln!("parsing took {:?}", start.elapsed());
 
+                    let parsed = parsed.unwrap();
+                    eprintln!("parsed as: {:?}", parsed);
+
                     let start = Instant::now();
-                    let res = self.execute(parsed.unwrap(), false)?;
+                    let res = self.execute(parsed, false)?;
                     eprintln!("executing took {:?}", start.elapsed());
 
                     let start = Instant::now();
                     let m = Matrix::try_from(res)?;
                     eprintln!("collecting took {:?}", start.elapsed());
 
-                    Ok(ExecutorResult::Value(Value::Matrix(m)))
+                    Ok(m.into())
                 }
 
                 cmd => Err(format!("unknown command {}", cmd)),
@@ -895,10 +894,7 @@ impl<'a> Executor<'a> {
         };
 
         if remember {
-            let val = res
-                .clone()
-                .and_then(|r| r.into_chain())
-                .and_then(Value::try_from);
+            let val = res.clone().and_then(Value::try_from);
             if let Ok(val) = val {
                 self.variables.insert(String::from("_"), val);
             }

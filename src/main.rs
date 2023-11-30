@@ -8,7 +8,6 @@ use std::fs;
 use std::io::BufRead;
 
 use clap::{App, Arg};
-use executor::chain::Chain;
 
 use crate::executor::matrix::Formatter;
 use crate::executor::{Executor, ExecutorResult};
@@ -39,7 +38,6 @@ impl State {
             Err(e) => Err(format!("error while executing: {}", e)),
             Ok(ExecutorResult::None) => Ok(String::new()),
             Ok(ExecutorResult::Chain(c)) => c.format(self.formatter),
-            Ok(ExecutorResult::Value(res)) => Chain::Value(res).format(self.formatter),
             Ok(ExecutorResult::Info(s)) => Ok(s),
             Ok(ExecutorResult::Setting(key, val)) => {
                 match key.to_ascii_lowercase().as_str() {
