@@ -9,9 +9,11 @@ use super::{
 
 use dyn_clonable::{dyn_clone::clone_box, *};
 
+pub type Error = std::borrow::Cow<'static, str>;
+
 #[clonable]
-pub trait ValueIter: Iterator<Item = Result<Ratio, String>> + Clone {}
-impl<T> ValueIter for T where T: Iterator<Item = Result<Ratio, String>> + Clone {}
+pub trait ValueIter: Iterator<Item = Result<Ratio, Error>> + Clone {}
+impl<T> ValueIter for T where T: Iterator<Item = Result<Ratio, Error>> + Clone {}
 
 pub struct IterShape {
     pub iterator: Box<dyn ValueIter>,
@@ -40,7 +42,7 @@ impl IterShape {
 }
 
 impl TryFrom<IterShape> for Matrix {
-    type Error = String;
+    type Error = Error;
 
     fn try_from(value: IterShape) -> Result<Self, Self::Error> {
         if cfg!(debug_assertions) {
@@ -48,7 +50,7 @@ impl TryFrom<IterShape> for Matrix {
             println!("collect point:\n{}", bt);
         }
 
-        let values: Result<Vec<Ratio>, String> = value.iterator.collect();
+        let values: Result<Vec<Ratio>, Error> = value.iterator.collect();
         let values = values?;
 
         Ok(Matrix::make_vector(values))
@@ -81,9 +83,9 @@ impl Chain {
         Self::Iterator(IterShape { iterator, len })
     }
 
-    pub fn into_iter_shape(self) -> Result<IterShape, String> {
+    pub fn into_iter_shape(self) -> Result<IterShape, Error> {
         match self {
-            Chain::Value(Value::Function(_)) => Err(String::from("expected value, got a function")),
+            Chain::Value(Value::Function(_)) => Err(Error::from("expected value, got a function")),
 
             Chain::Iterator(iter_shape) => Ok(iter_shape),
             Chain::Value(Value::Matrix(m)) => Ok(IterShape {
@@ -93,7 +95,7 @@ impl Chain {
         }
     }
 
-    pub fn format(self, fmt: Formatter) -> Result<String, String> {
+    pub fn format(self, fmt: Formatter) -> Result<String, Error> {
         macro_rules! format_iter {
             ($iterator:expr) => {
                 $iterator
@@ -106,14 +108,14 @@ impl Chain {
                             Ok(val)
                         }
                     })
-                    .collect::<Result<String, String>>()?
+                    .collect::<Result<String, Error>>()?
             };
         }
 
         let res = match self {
             Chain::Value(Value::Function(f)) => format!("{}", f),
             Chain::Value(Value::Matrix(m)) => {
-                format_iter!(m.into_iter().map(Result::<_, String>::Ok))
+                format_iter!(m.into_iter().map(Result::<_, Error>::Ok))
             }
             Chain::Iterator(IterShape { iterator, .. }) => format_iter!(iterator),
         };
@@ -122,7 +124,7 @@ impl Chain {
 }
 
 impl TryFrom<Chain> for Value {
-    type Error = String;
+    type Error = Error;
 
     fn try_from(value: Chain) -> Result<Self, Self::Error> {
         match value {
@@ -133,12 +135,12 @@ impl TryFrom<Chain> for Value {
 }
 
 impl TryFrom<Chain> for Matrix {
-    type Error = String;
+    type Error = Error;
 
     fn try_from(chain: Chain) -> Result<Self, Self::Error> {
         let chain = Value::try_from(chain)?;
         match chain {
-            Value::Function(_) => Err(String::from("expected matrix, got a function")),
+            Value::Function(_) => Err(Error::from("expected matrix, got a function")),
             Value::Matrix(m) => Ok(m),
         }
     }

@@ -8,6 +8,7 @@ use std::fs;
 use std::io::BufRead;
 
 use clap::{App, Arg};
+use executor::chain::Error;
 
 use crate::executor::matrix::Formatter;
 use crate::executor::{Executor, ExecutorResult};
@@ -18,14 +19,14 @@ struct State {
 }
 
 impl State {
-    fn exec_line(&mut self, line: &str) -> Result<String, String> {
+    fn exec_line(&mut self, line: &str) -> Result<String, Error> {
         let (line, silent) = line
             .strip_prefix('#')
             .map(|line| (line, true))
             .unwrap_or((line, false));
 
         let parsed = match parser::parse(line) {
-            Err(e) => return Err(format!("error while parsing: {}", e)),
+            Err(e) => return Err(format!("error while parsing: {}", e).into()),
             Ok(None) => return Ok(String::new()),
             Ok(Some(s)) => s,
         };
@@ -35,7 +36,7 @@ impl State {
         }
 
         let res = match self.exec.execute(parsed, true) {
-            Err(e) => Err(format!("error while executing: {}", e)),
+            Err(e) => Err(format!("error while executing: {}", e).into()),
             Ok(ExecutorResult::None) => Ok(String::new()),
             Ok(ExecutorResult::Chain(c)) => c.format(self.formatter),
             Ok(ExecutorResult::Info(s)) => Ok(s),
@@ -54,7 +55,7 @@ impl State {
                             }
                         };
                     }
-                    setting => return Err(format!("unknown setting {}", setting)),
+                    setting => return Err(format!("unknown setting {}", setting).into()),
                 };
                 Ok(String::new())
             }

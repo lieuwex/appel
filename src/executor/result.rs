@@ -1,7 +1,7 @@
 use std::convert::{TryFrom, TryInto};
 
 use super::{
-    chain::{Chain, IterShape},
+    chain::{Chain, Error, IterShape},
     value::Value,
 };
 
@@ -14,7 +14,7 @@ pub enum ExecutorResult {
 }
 
 impl ExecutorResult {
-    pub fn into_iter_shape(self) -> Result<IterShape, String> {
+    pub fn into_iter_shape(self) -> Result<IterShape, Error> {
         Chain::try_from(self)?.into_iter_shape()
     }
 }
@@ -29,24 +29,24 @@ where
 }
 
 impl TryFrom<ExecutorResult> for Value {
-    type Error = String;
+    type Error = Error;
 
     fn try_from(value: ExecutorResult) -> Result<Self, Self::Error> {
         match value {
             ExecutorResult::Chain(c) => c.try_into(),
-            _ => Err(String::from("Result is not a value or chain")),
+            _ => Err(Error::from("Result is not a value or chain")),
         }
     }
 }
 
 impl TryFrom<ExecutorResult> for Chain {
-    type Error = String;
+    type Error = Error;
 
     fn try_from(value: ExecutorResult) -> Result<Self, Self::Error> {
         match value {
-            ExecutorResult::None => Err(String::from("expected value")),
-            ExecutorResult::Info(_) => Err(String::from("expected value, got an info string")),
-            ExecutorResult::Setting(_, _) => Err(String::from("expected value, got a setting")),
+            ExecutorResult::None => Err(Error::from("expected value")),
+            ExecutorResult::Info(_) => Err(Error::from("expected value, got an info string")),
+            ExecutorResult::Setting(_, _) => Err(Error::from("expected value, got a setting")),
 
             ExecutorResult::Chain(c) => Ok(c),
         }

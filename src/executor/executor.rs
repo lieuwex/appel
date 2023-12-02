@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::convert::{TryFrom, TryInto};
 use std::iter;
@@ -5,7 +6,7 @@ use std::ops::Neg;
 use std::time::Instant;
 
 use crate::ast::*;
-use crate::executor::chain::{Chain, IterShape, ValueIter};
+use crate::executor::chain::{Chain, Error, IterShape, ValueIter};
 use crate::parser;
 
 use num_bigint::{BigInt, Sign};
@@ -29,7 +30,7 @@ where
     Float::with_val(FLOAT_PRECISION, val)
 }
 
-fn pow(a: Ratio, b: Ratio) -> Result<Ratio, String> {
+fn pow(a: Ratio, b: Ratio) -> Result<Ratio, Error> {
     let pair = b.is_integer().then(|| (b.to_u32(), b.to_i32()));
 
     match pair {
@@ -41,17 +42,17 @@ fn pow(a: Ratio, b: Ratio) -> Result<Ratio, String> {
 
             a.pow(b)
                 .to_rational()
-                .ok_or_else(|| "result is not finite".to_owned())
+                .ok_or_else(|| Error::from("result is not finite"))
         }
     }
 }
-fn log(base: Ratio, n: Ratio) -> Result<Ratio, String> {
+fn log(base: Ratio, n: Ratio) -> Result<Ratio, Error> {
     let base = to_float(base);
     let n = to_float(n);
 
     let res = n.log2() / base.log2();
     res.to_rational()
-        .ok_or_else(|| "result is not finite".to_owned())
+        .ok_or_else(|| Error::from("result is not finite"))
 }
 
 pub struct Executor<'a> {
@@ -59,28 +60,28 @@ pub struct Executor<'a> {
     variables: HashMap<String, Value>,
 }
 
-fn expect_scalar(v: ExecutorResult) -> Result<Ratio, String> {
+fn expect_scalar(v: ExecutorResult) -> Result<Ratio, Error> {
     match v.into_iter_shape()?.into_scalar() {
-        None => Err(String::from("expected scalar")),
+        None => Err(Error::from("expected scalar")),
         Some(s) => Ok(s),
     }
 }
 
-fn to_usize_error(rat: &Ratio) -> Result<usize, String> {
+fn to_usize_error(rat: &Ratio) -> Result<usize, Error> {
     let int = rat
         .to_integer()
-        .ok_or_else(|| "value is not an integer".to_owned())?;
+        .ok_or_else(|| Error::from("value is not an integer"))?;
     int.to_usize()
-        .ok_or_else(|| "value negative or too large for usize".to_owned())
+        .ok_or_else(|| Error::from("value negative or too large for usize"))
 }
 
-fn into_integer_error(iter_shape: IterShape) -> Result<Integer, String> {
+fn into_integer_error(iter_shape: IterShape) -> Result<Integer, Error> {
     let scalar = iter_shape
         .into_scalar()
-        .ok_or_else(|| String::from("expected scalar, got vector"))?;
+        .ok_or_else(|| Error::from("expected scalar, got vector"))?;
     let n = scalar
         .into_integer()
-        .ok_or_else(|| "value must be an integer".to_owned())?;
+        .ok_or_else(|| Error::from("value must be an integer"))?;
     Ok(n)
 }
 
@@ -101,20 +102,20 @@ fn get_comp_op_fn(op: CompOp) -> fn(Ratio, Ratio) -> Ratio {
     }
 }
 
-fn call_binary(op: BinOp, a: Chain, b: Chain) -> Result<ExecutorResult, String> {
+fn call_binary(op: BinOp, a: Chain, b: Chain) -> Result<ExecutorResult, Error> {
     let a = a.into_iter_shape()?;
     let b = b.into_iter_shape()?;
 
     fn apply(
         a: IterShape,
         b: IterShape,
-        f: impl Fn(Rational, Rational) -> Result<Rational, String> + Clone + 'static,
-    ) -> Result<ExecutorResult, String> {
+        f: impl Fn(Rational, Rational) -> Result<Rational, Error> + Clone + 'static,
+    ) -> Result<ExecutorResult, Error> {
         if a.len == b.len {
             let values = (a.iterator)
                 .zip(b.iterator)
                 .map(|(a, b)| Ok((a?, b?)))
-                .map(move |p| p.and_then(|(a, b)| f(a, b).map(Ratio::from)));
+                .map(move |p| p.and_then(|(a, b)| f(a, b)));
 
             let matrix = Chain::Iterator(IterShape {
                 iterator: Box::new(values),
@@ -128,7 +129,7 @@ fn call_binary(op: BinOp, a: Chain, b: Chain) -> Result<ExecutorResult, String> 
         } else if b.is_scalar() {
             (b.into_scalar().unwrap(), a, false)
         } else {
-            return Err(String::from("rank mismatch"));
+            return Err(Error::from("rank mismatch"));
         };
 
         let matrix = Chain::Iterator(IterShape {
@@ -151,7 +152,7 @@ fn call_binary(op: BinOp, a: Chain, b: Chain) -> Result<ExecutorResult, String> 
     macro_rules! safe_div {
         ($a:expr, $b:expr) => {{
             if $b.is_zero() {
-                Err(String::from("division by zero"))
+                Err(Error::from("division by zero"))
             } else {
                 Ok($a / $b)
             }
@@ -197,7 +198,7 @@ fn call_binary(op: BinOp, a: Chain, b: Chain) -> Result<ExecutorResult, String> 
             };
             let n = n
                 .to_usize()
-                .ok_or_else(|| "value too large for usize".to_owned())?;
+                .ok_or_else(|| Error::from("value too large for usize"))?;
 
             let (iterator, len): (Box<dyn ValueIter>, usize) = if at_start {
                 (Box::new(b.iterator.skip(n)), b.len - n)
@@ -212,7 +213,7 @@ fn call_binary(op: BinOp, a: Chain, b: Chain) -> Result<ExecutorResult, String> 
         BinOp::Rho => {
             let len = a
                 .into_scalar()
-                .ok_or_else(|| String::from("expected scalar"))?;
+                .ok_or_else(|| Error::from("expected scalar"))?;
             let len = to_usize_error(&len)?;
 
             let values = std::iter::repeat(b.iterator).flatten().take(len);
@@ -234,7 +235,7 @@ fn call_binary(op: BinOp, a: Chain, b: Chain) -> Result<ExecutorResult, String> 
             let radix = a
                 .to_u32()
                 .filter(|r| (2..=256).contains(r))
-                .ok_or(String::from("radix must be greater than or equal to 2"))?;
+                .ok_or(Error::from("radix must be greater than or equal to 2"))?;
 
             let (sign, bits) = b.to_radix_be(radix);
 
@@ -275,7 +276,7 @@ fn call_binary(op: BinOp, a: Chain, b: Chain) -> Result<ExecutorResult, String> 
             let radix = a
                 .to_u32()
                 .filter(|r| (2..=256).contains(r))
-                .ok_or(String::from("radix must be greater than or equal to 2"))?;
+                .ok_or(Error::from("radix must be greater than or equal to 2"))?;
 
             let sign = if b.iter().any(|b| b.to_integer().sign() == Sign::Minus) {
                 Sign::Minus
@@ -286,7 +287,7 @@ fn call_binary(op: BinOp, a: Chain, b: Chain) -> Result<ExecutorResult, String> 
             let bits: Vec<u8> = b.iter().map(|b| b.to_integer().to_u8().unwrap()).collect();
 
             let packed = BigInt::from_radix_be(sign, &bits, radix);
-            let int = packed.ok_or(String::from("couldn't convert bits to int"))?;
+            let int = packed.ok_or(Error::from("couldn't convert bits to int"))?;
 
             let int = int.to_string();
             let int = Integer::from_str_radix(&int, 10).unwrap();
@@ -295,7 +296,7 @@ fn call_binary(op: BinOp, a: Chain, b: Chain) -> Result<ExecutorResult, String> 
         }
 
         BinOp::In => {
-            let base_set: Result<HashSet<Ratio>, String> = b.iterator.collect();
+            let base_set: Result<HashSet<Ratio>, Error> = b.iterator.collect();
             let base_set = base_set?;
             let values = a.iterator.map(move |x| {
                 x.map(|x| {
@@ -315,7 +316,7 @@ fn call_binary(op: BinOp, a: Chain, b: Chain) -> Result<ExecutorResult, String> 
         }
 
         BinOp::Union => {
-            let a: Result<Vec<_>, String> = a.iterator.collect();
+            let a: Result<Vec<_>, Error> = a.iterator.collect();
             let a = a?;
 
             let new_values: Vec<_> = b
@@ -347,7 +348,7 @@ fn call_binary(op: BinOp, a: Chain, b: Chain) -> Result<ExecutorResult, String> 
 
         BinOp::Pad => {
             if a.len != 2 {
-                return Err(format!("expected 2 arguments on the left, got {}", a.len));
+                return Err(format!("expected 2 arguments on the left, got {}", a.len).into());
             }
 
             let mut it = a.iterator;
@@ -356,7 +357,7 @@ fn call_binary(op: BinOp, a: Chain, b: Chain) -> Result<ExecutorResult, String> 
                 .unwrap()
                 .unwrap()
                 .into_integer()
-                .ok_or_else(|| "new length must be an integer".to_owned())?;
+                .ok_or_else(|| Error::from("new length must be an integer"))?;
             let value = it.next().unwrap();
 
             let (new_len, at_start) = if (&new_len).signum() == -1 {
@@ -367,7 +368,7 @@ fn call_binary(op: BinOp, a: Chain, b: Chain) -> Result<ExecutorResult, String> 
             let new_len = new_len.to_usize().unwrap();
 
             let amount = new_len.checked_sub(b.len).ok_or_else(|| {
-                "vector on the right is longer than the wanted padded length".to_owned()
+                Error::from("vector on the right is longer than the wanted padded length")
             })?;
 
             let repeated = iter::repeat(value).take(amount);
@@ -418,7 +419,7 @@ impl<'a> Executor<'a> {
         macro_rules! add_frac {
             ($name:expr, $a:expr, $b:expr) => {
                 res.variables.insert(
-                    String::from($name),
+                    Error::from($name),
                     Value::Matrix(Matrix::from(Ratio::from((
                         Integer::from_usize($a).unwrap(),
                         Integer::from_usize($b).unwrap(),
@@ -434,16 +435,14 @@ impl<'a> Executor<'a> {
         &self,
         f: &Function,
         args: impl IntoIterator<Item = Chain>,
-    ) -> Result<ExecutorResult, String> {
+    ) -> Result<ExecutorResult, Error> {
         let args: Result<Vec<Value>, _> = args.into_iter().map(Value::try_from).collect();
         let args = args?;
 
         if args.len() != f.params().len() {
-            return Err(format!(
-                "expected {} arguments got {}",
-                f.params().len(),
-                args.len()
-            ));
+            return Err(
+                format!("expected {} arguments got {}", f.params().len(), args.len()).into(),
+            );
         }
 
         let mut ctx = Executor {
@@ -459,13 +458,13 @@ impl<'a> Executor<'a> {
         ctx.execute_expr(f.expr())
     }
 
-    fn execute_unary(&mut self, op: UnOp, expr: &Expr) -> Result<ExecutorResult, String> {
+    fn execute_unary(&mut self, op: UnOp, expr: &Expr) -> Result<ExecutorResult, Error> {
         let res = self.execute_expr(expr)?;
 
         fn for_all(
             res: ExecutorResult,
-            f: impl Fn(Rational) -> Result<Rational, String> + Clone + 'static,
-        ) -> Result<ExecutorResult, String> {
+            f: impl Fn(Rational) -> Result<Rational, Error> + Clone + 'static,
+        ) -> Result<ExecutorResult, Error> {
             let IterShape { iterator, len } = res.into_iter_shape()?;
 
             let values = iterator.map(move |v| v.and_then(&f));
@@ -501,24 +500,24 @@ impl<'a> Executor<'a> {
 
             UnOp::RollInt => for_all!(|x: Ratio| {
                 if x <= Ratio::zero() {
-                    return Err("value must be greater than 0".to_owned());
+                    return Err(Error::from("value must be greater than 0"));
                 }
 
                 let mut rng = rand::thread_rng();
                 let upper: u128 = x
                     .into_integer()
-                    .ok_or_else(|| "value must be an integer".to_owned())?
+                    .ok_or_else(|| Error::from("value must be an integer"))?
                     .to_u128()
-                    .ok_or_else(|| "value too large to be rolled".to_owned())?;
+                    .ok_or_else(|| Error::from("value too large to be rolled"))?;
                 let val: u128 = rng.gen_range(0..=upper);
-                Ratio::from_u128(val).ok_or_else(|| "couldn't convert u64 to ratio".to_owned())
+                Ratio::from_u128(val).ok_or_else(|| Error::from("couldn't convert u64 to ratio"))
             }),
             UnOp::RollFloat => for_all!(|x: Ratio| {
                 let mut rng = rand::thread_rng();
                 let val: f64 = rng.gen_range(0.0..=1.0);
                 Ratio::from_f64(val)
                     .map(|val| x * val)
-                    .ok_or_else(|| "couldn't convert f64 to ratio".to_owned())
+                    .ok_or_else(|| Error::from("couldn't convert f64 to ratio"))
             }),
 
             UnOp::Floor => for_all_ok!(|x: Ratio| x.floor()),
@@ -533,7 +532,8 @@ impl<'a> Executor<'a> {
                     UnOp::Tan => f.tan(),
                     _ => unreachable!(),
                 };
-                res.to_rational().ok_or_else(|| "invalid result".to_owned())
+                res.to_rational()
+                    .ok_or_else(|| Error::from("invalid result"))
             }),
             UnOp::Sign => for_all_ok!(|x: Ratio| x.signum()),
 
@@ -541,7 +541,7 @@ impl<'a> Executor<'a> {
                 let s = expect_scalar(res)?;
                 let upper = to_usize_error(&s)?;
 
-                let it = (1..=upper).map(|v| Ratio::from_usize(v).ok_or_else(String::new));
+                let it = (1..=upper).map(|v| Ratio::from_usize(v).ok_or(Cow::Borrowed("")));
                 let len = upper;
 
                 Ok(Chain::make_vector(Box::new(it), len).into())
@@ -565,7 +565,7 @@ impl<'a> Executor<'a> {
 
             UnOp::Up | UnOp::Down => {
                 let IterShape { iterator, len } = res.into_iter_shape()?;
-                let values: Result<Vec<(usize, Ratio)>, String> = iterator
+                let values: Result<Vec<(usize, Ratio)>, Error> = iterator
                     .enumerate()
                     .map(|(i, x)| x.map(|x| (i, x)))
                     .collect();
@@ -591,7 +591,7 @@ impl<'a> Executor<'a> {
         }
     }
 
-    fn execute_binary(&mut self, op: BinOp, a: &Expr, b: &Expr) -> Result<ExecutorResult, String> {
+    fn execute_binary(&mut self, op: BinOp, a: &Expr, b: &Expr) -> Result<ExecutorResult, Error> {
         // (a/b)^(c/d) = (\sqrt d {a^c}) / (\sqrt d {b ^c})
 
         let a = self.execute_expr(a)?.try_into()?;
@@ -604,17 +604,17 @@ impl<'a> Executor<'a> {
         op: FoldOp,
         expr: &Expr,
         is_fold: bool,
-    ) -> Result<ExecutorResult, String> {
+    ) -> Result<ExecutorResult, Error> {
         let iter_shape = self.execute_expr(expr)?.into_iter_shape()?;
         if iter_shape.len < 1 {
-            return Err(String::from("matrix must have at least 1 value"));
+            return Err(Error::from("matrix must have at least 1 value"));
         }
 
         fn apply(
             iter_shape: IterShape,
             is_fold: bool,
-            f: impl Fn(Chain, Chain) -> Result<ExecutorResult, String>,
-        ) -> Result<ExecutorResult, String> {
+            f: impl Fn(Chain, Chain) -> Result<ExecutorResult, Error>,
+        ) -> Result<ExecutorResult, Error> {
             if is_fold {
                 let mut it = iter_shape.iterator;
                 let first = it.next().unwrap();
@@ -622,7 +622,7 @@ impl<'a> Executor<'a> {
                 // fold
                 it.try_fold(
                     ExecutorResult::Chain(Chain::make_scalar(first?)),
-                    |acc, item| -> Result<ExecutorResult, String> {
+                    |acc, item| -> Result<ExecutorResult, Error> {
                         let acc = acc.into_iter_shape()?.scalar().unwrap();
                         let acc = Chain::make_scalar(acc);
 
@@ -659,11 +659,11 @@ impl<'a> Executor<'a> {
             FoldOp::BinOp(op) => apply!(|acc, item| call_binary(op, acc, item)),
 
             FoldOp::FunctionRef(f) => match self.get_variable(&f) {
-                None => Err(format!("variable {} not found", f)),
-                Some(Value::Matrix(_)) => Err(String::from("variable is a matrix")),
+                None => Err(format!("variable {} not found", f).into()),
+                Some(Value::Matrix(_)) => Err(Error::from("variable is a matrix")),
                 Some(Value::Function(f)) => {
                     if f.params().len() != 2 {
-                        return Err(String::from("function does not take 2 params"));
+                        return Err(Error::from("function does not take 2 params"));
                     }
 
                     apply!(|acc, item| {
@@ -676,20 +676,20 @@ impl<'a> Executor<'a> {
         }
     }
 
-    fn execute_map(&mut self, a: &Expr, b: &Expr) -> Result<ExecutorResult, String> {
+    fn execute_map(&mut self, a: &Expr, b: &Expr) -> Result<ExecutorResult, Error> {
         let f = match Value::try_from(self.execute_expr(a)?) {
             Ok(Value::Function(f)) => f,
-            _ => return Err(String::from("expected left hand to be a function")),
+            _ => return Err(Error::from("expected left hand to be a function")),
         };
         let mut x = Matrix::try_from(self.execute_expr(b)?)?;
 
         for value in x.iter_mut() {
             replace_with_or_default_and_return(value, |value| {
-                let res: Result<Rational, String> = (|| {
+                let res: Result<Rational, Error> = (|| {
                     let res = self.call_function(&f, iter::once(Chain::make_scalar(value)))?;
                     res.into_iter_shape()?
                         .into_scalar()
-                        .ok_or("Function returned non-scalar in map".to_string())
+                        .ok_or(Error::from("Function returned non-scalar in map"))
                 })();
 
                 match res {
@@ -702,12 +702,12 @@ impl<'a> Executor<'a> {
         Ok(ExecutorResult::from(x))
     }
 
-    fn execute_expr(&mut self, node: &Expr) -> Result<ExecutorResult, String> {
+    fn execute_expr(&mut self, node: &Expr) -> Result<ExecutorResult, Error> {
         match node {
             Expr::Atom(Atom::Rat(v)) => Ok(Matrix::make_scalar(v.clone()).into()),
             Expr::Atom(Atom::Ref(s)) => {
                 let var = match self.get_variable(s) {
-                    None => return Err(format!("variable {} not found", s)),
+                    None => return Err(format!("variable {} not found", s).into()),
                     Some(var) => var.clone(),
                 };
 
@@ -718,7 +718,7 @@ impl<'a> Executor<'a> {
                 let expressions: Vec<_> = v
                     .iter()
                     .map(|e| Value::try_from(self.execute_expr(e)?))
-                    .collect::<Result<_, String>>()?;
+                    .collect::<Result<_, Error>>()?;
 
                 match expressions[0].clone() {
                     Value::Function(f) => {
@@ -734,7 +734,7 @@ impl<'a> Executor<'a> {
                         let len = expressions.len();
                         let values = expressions.into_iter().map(|e| {
                             match Matrix::try_from(e)?.into_scalar() {
-                                None => Err(String::from("nested matrices aren't allowed")),
+                                None => Err(Error::from("nested matrices aren't allowed")),
                                 Some(s) => Ok(s),
                             }
                         });
@@ -758,10 +758,10 @@ impl<'a> Executor<'a> {
                 let indices: Vec<usize> = indices
                     .iterator
                     .map(|v| v.and_then(|v| to_usize_error(&v)))
-                    .collect::<Result<_, String>>()?;
+                    .collect::<Result<_, Error>>()?;
 
                 match m.get_multiple(&indices) {
-                    None => Err(String::from("out of bounds")),
+                    None => Err(Error::from("out of bounds")),
                     Some(i) => Ok(Matrix::make_vector(i).into()),
                 }
             }
@@ -785,7 +785,7 @@ impl<'a> Executor<'a> {
         }
     }
 
-    pub fn execute(&mut self, node: Statement, remember: bool) -> Result<ExecutorResult, String> {
+    pub fn execute(&mut self, node: Statement, remember: bool) -> Result<ExecutorResult, Error> {
         let is_conflict = |old: Option<&Value>, new_is_fun: bool| match old {
             None => false,
             Some(Value::Matrix(_)) => new_is_fun,
@@ -796,10 +796,9 @@ impl<'a> Executor<'a> {
             ($name:expr, $is_fun:expr) => {
                 let old = self.get_variable(&$name);
                 if is_conflict(old, $is_fun) {
-                    return Err(format!(
-                        "variable {} already exists with different type",
-                        $name
-                    ));
+                    return Err(
+                        format!("variable {} already exists with different type", $name).into(),
+                    );
                 }
             };
         }
@@ -828,8 +827,8 @@ impl<'a> Executor<'a> {
 
             Statement::InternalCommand(command, body) => match command.as_str() {
                 "n" | "number" => {
-                    let parsed =
-                        parser::parse(&body).map_err(|_| "couldn't parse expression".to_owned())?;
+                    let parsed = parser::parse(&body)
+                        .map_err(|_| Error::from("couldn't parse expression"))?;
                     if parsed.is_none() {
                         return Ok(ExecutorResult::None);
                     }
@@ -859,7 +858,8 @@ impl<'a> Executor<'a> {
                         return Err(format!(
                             "expected key and value, got {} items instead",
                             it.len()
-                        ));
+                        )
+                        .into());
                     }
                     let key = it.pop_front().unwrap();
                     let value = it.pop_front().unwrap();
@@ -868,8 +868,8 @@ impl<'a> Executor<'a> {
 
                 "t" | "time" => {
                     let start = Instant::now();
-                    let parsed =
-                        parser::parse(&body).map_err(|_| "couldn't parse expression".to_owned())?;
+                    let parsed = parser::parse(&body)
+                        .map_err(|_| Error::from("couldn't parse expression"))?;
                     if parsed.is_none() {
                         return Ok(ExecutorResult::None);
                     }
@@ -889,7 +889,7 @@ impl<'a> Executor<'a> {
                     Ok(m.into())
                 }
 
-                cmd => Err(format!("unknown command {}", cmd)),
+                cmd => Err(format!("unknown command {}", cmd).into()),
             },
         };
 
