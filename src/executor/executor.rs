@@ -124,7 +124,7 @@ fn call_binary(op: BinOp, a: Chain, b: Chain) -> Result<ExecutorResult, String> 
         }
 
         let (scalar, non_scalar, scalar_is_left) = if a.is_scalar() {
-            (a.into_scalar().unwrap(), b, false)
+            (a.into_scalar().unwrap(), b, true)
         } else if b.is_scalar() {
             (b.into_scalar().unwrap(), a, false)
         } else {
