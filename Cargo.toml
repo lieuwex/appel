@@ -12,7 +12,7 @@ lto = true
 pom = "^3.1"
 rand = "0.8"
 clap = "2.33.0"
-dtoa = "0.4"
+dtoa = "1"
 
 rug = { version = "1.18", features = ["default", "num-traits"] }
 num-traits = "*"

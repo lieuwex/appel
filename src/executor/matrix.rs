@@ -18,9 +18,8 @@ impl Formatter {
 
         match self {
             Formatter::Float(None) => {
-                let mut buf: Vec<u8> = vec![];
-                dtoa::write(&mut buf, rat.to_f64()).unwrap();
-                String::from_utf8(buf).unwrap()
+                let mut buf = dtoa::Buffer::new();
+                buf.format(rat.to_f64()).to_string()
             }
             Formatter::Float(Some(precision)) => format!("{1:.0$}", precision, rat.to_f64()),
             Formatter::Ratio => format!("{}", rat),
