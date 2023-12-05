@@ -4,6 +4,7 @@ pub mod executor;
 pub mod function;
 pub mod matrix;
 pub mod result;
+mod util;
 pub mod value;
 
 pub use executor::Executor;

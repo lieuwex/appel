@@ -1,6 +1,7 @@
-use std::{backtrace::Backtrace, convert::TryFrom};
+use std::convert::TryFrom;
 
 use crate::ast::Ratio;
+use crate::collect_point;
 
 use super::{
     matrix::{Formatter, Matrix},
@@ -45,10 +46,7 @@ impl TryFrom<IterShape> for Matrix {
     type Error = Error;
 
     fn try_from(value: IterShape) -> Result<Self, Self::Error> {
-        if cfg!(debug_assertions) {
-            let bt = Backtrace::force_capture();
-            println!("collect point:\n{}", bt);
-        }
+        collect_point!();
 
         let values: Result<Vec<Ratio>, Error> = value.iterator.collect();
         let values = values?;

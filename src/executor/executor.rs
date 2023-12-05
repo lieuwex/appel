@@ -5,9 +5,9 @@ use std::iter;
 use std::ops::Neg;
 use std::time::Instant;
 
-use crate::ast::*;
 use crate::executor::chain::{Chain, Error, IterShape, ValueIter};
 use crate::parser;
+use crate::{ast::*, collect_point};
 
 use itertools::Itertools;
 use num_bigint::{BigInt, Sign};
@@ -685,8 +685,8 @@ impl<'a> Executor<'a> {
 
         fn apply(
             iter_shape: IterShape,
-            f: impl Fn(Vec<Chain>) -> Result<ExecutorResult, Error> + Clone,
             chunk_size: usize,
+            f: impl Fn(Vec<Chain>) -> Result<ExecutorResult, Error>,
         ) -> Result<ExecutorResult, Error> {
             if iter_shape.len % chunk_size != 0 {
                 return Err(Error::from(format!(
@@ -701,24 +701,28 @@ impl<'a> Executor<'a> {
                 .chunks(chunk_size)
                 .into_iter()
                 .map(move |args| -> Result<_, Error> {
-                    let args: Vec<Chain> = args
+                    let args: Result<Vec<Chain>, _> = args
                         .into_iter()
-                        .map(Result::unwrap)
-                        .map(Chain::make_scalar)
+                        .map(|v| v.map(Chain::make_scalar))
                         .collect();
+
+                    let args = args?;
+                    assert_eq!(args.len(), chunk_size);
+
                     let res = f(args)?;
                     Ok(Chain::try_from(res)?.into_iter_shape()?.iterator)
                 })
                 .flatten()
                 .flatten()
                 .collect();
+            collect_point!();
 
             let m = Matrix::make_vector(chunks?);
             Ok(m.into())
         }
         macro_rules! apply {
             ($chunk_size:expr, $f:expr) => {
-                apply(iter_shape, $f, $chunk_size)
+                apply(iter_shape, $chunk_size, $f)
             };
         }
 
