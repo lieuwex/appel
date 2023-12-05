@@ -417,10 +417,11 @@ impl<'a> Executor<'a> {
         add_float!("pi", f64::PI());
         add_float!("e", f64::E());
 
+        /*
         macro_rules! add_frac {
             ($name:expr, $a:expr, $b:expr) => {
                 res.variables.insert(
-                    Error::from($name),
+                    String::from($name),
                     Value::Matrix(Matrix::from(Ratio::from((
                         Integer::from_usize($a).unwrap(),
                         Integer::from_usize($b).unwrap(),
@@ -428,6 +429,7 @@ impl<'a> Executor<'a> {
                 );
             };
         }
+        */
 
         res
     }
@@ -712,8 +714,8 @@ impl<'a> Executor<'a> {
                     let res = f(args)?;
                     Ok(Chain::try_from(res)?.into_iter_shape()?.iterator)
                 })
-                .flatten()
-                .flatten()
+                .flatten_ok()
+                .flatten_ok()
                 .collect();
             collect_point!();
 

@@ -5,7 +5,6 @@ mod executor;
 mod parser;
 
 use std::fs;
-use std::io::BufRead;
 
 use clap::{App, Arg};
 use executor::chain::Error;
@@ -117,7 +116,8 @@ fn main() -> Result<(), String> {
         }
     }
 
-    for line in std::io::stdin().lock().lines() {
+    let lines = std::io::stdin().lines();
+    for line in lines {
         let line = match line {
             Err(e) => return Err(format!("error reading from stdin: {}", e)),
             Ok(l) => l,

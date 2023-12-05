@@ -165,9 +165,9 @@ fn p_posexp<'a>() -> Parser<'a, Integer> {
         | empty().map(|_| Integer::ZERO)
 }
 
-fn negative<T: 'static>(p: Parser<T>) -> Parser<T>
+fn negative<T>(p: Parser<T>) -> Parser<T>
 where
-    T: std::ops::Neg<Output = T>,
+    T: std::ops::Neg<Output = T> + 'static,
 {
     let p_sign = sym('-').opt().map(|o| o.is_some());
     (p_sign + p)
