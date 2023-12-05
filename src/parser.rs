@@ -394,27 +394,36 @@ fn p_expr_11<'a>() -> Parser<'a, Expr> {
     fold.name("fold") | p_expr_10()
 }
 
-/// Let binding
+/// Chunker
 fn p_expr_12<'a>() -> Parser<'a, Expr> {
+    let op_p = binary_op().map(FoldOp::BinOp) | p_varname().map(FoldOp::FunctionRef);
+    let fold = (op_p - symbol_both(operator("||")) + call(p_expr))
+        .map(|(op, expr)| Expr::Chunker(op, Box::new(expr)));
+
+    fold.name("chunker") | p_expr_11()
+}
+
+/// Let binding
+fn p_expr_13<'a>() -> Parser<'a, Expr> {
     let let_binding = ((symbol_right(operator("let")) * p_varname())
         + (symbol_both(operator("=")) * call(p_expr_0))
         + (symbol_both(operator("in")) * call(p_expr)))
     .map(|((name, expr), body)| Expr::Let(name, Box::new(expr), Box::new(body)));
 
-    let_binding.name("let_binding") | p_expr_11()
+    let_binding.name("let_binding") | p_expr_12()
 }
 
 /// Lambda function
-fn p_expr_13<'a>() -> Parser<'a, Expr> {
+fn p_expr_14<'a>() -> Parser<'a, Expr> {
     let lambda = ((symbol_both(operator("\\")) * (p_varname() - whitespace(1)).repeat(1..))
         + (symbol_both(operator("->")) * call(p_expr)))
     .map(|(variables, body)| Expr::Lambda(variables, Box::new(body)));
 
-    lambda.name("lambda") | p_expr_12()
+    lambda.name("lambda") | p_expr_13()
 }
 
 fn p_expr<'a>() -> Parser<'a, Expr> {
-    p_expr_13()
+    p_expr_14()
 }
 
 /// Function declare
@@ -546,5 +555,10 @@ mod tests {
         assert!(!is_ok_some!(parse(r"(\-> x*2) . (1 2 3)")));
         assert!(!is_ok_some!(parse(r"(\x x*2) . (1 2 3)")));
         assert!(!is_ok_some!(parse(r"(x -> x*2) . (1 2 3)")));
+    }
+
+    #[test]
+    fn test_chunker() {
+        assert!(is_ok_some!(parse(r"f || 1 2 3")));
     }
 }

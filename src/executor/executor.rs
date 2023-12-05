@@ -9,6 +9,7 @@ use crate::ast::*;
 use crate::executor::chain::{Chain, Error, IterShape, ValueIter};
 use crate::parser;
 
+use itertools::Itertools;
 use num_bigint::{BigInt, Sign};
 use num_traits::*;
 use replace_with::replace_with_or_default_and_return;
@@ -676,6 +677,78 @@ impl<'a> Executor<'a> {
         }
     }
 
+    fn execute_chunker(&mut self, op: FoldOp, expr: &Expr) -> Result<ExecutorResult, Error> {
+        let iter_shape = self.execute_expr(expr)?.into_iter_shape()?;
+        if iter_shape.len < 1 {
+            return Err(Error::from("matrix must have at least 1 value"));
+        }
+
+        fn apply(
+            e: &Executor<'_>,
+            iter_shape: IterShape,
+            f: &Function,
+        ) -> Result<ExecutorResult, Error> {
+            let e: &'static Executor<'static> = unsafe { std::mem::transmute(e) };
+            let f: &'static Function = unsafe { std::mem::transmute(f) };
+
+            let chunk_size = f.params().len();
+
+            if iter_shape.len % chunk_size != 0 {
+                return Err(Error::from(format!(
+                    "left hand sides expects {} arguments, but the right hand side length ({}) is not divisible by that",
+                    chunk_size,
+                    iter_shape.len,
+                )));
+            }
+
+            let chunks: Vec<Vec<_>> = iter_shape
+                .iterator
+                .chunks(chunk_size)
+                .into_iter()
+                .map(|v| {
+                    v.into_iter()
+                        .map(Result::unwrap)
+                        .map(Chain::make_scalar)
+                        .collect()
+                })
+                .collect();
+
+            let it = chunks
+                .into_iter()
+                .map(move |args| {
+                    let res = e.call_function(f, args).unwrap();
+                    Matrix::try_from(res).unwrap().into_iter()
+                })
+                .flatten()
+                .map(Result::Ok);
+
+            let c = Chain::make_vector(Box::new(it), iter_shape.len);
+            Ok(ExecutorResult::Chain(c))
+        }
+        macro_rules! apply {
+            ($f:expr) => {
+                apply(self, iter_shape, $f)
+            };
+        }
+
+        match op {
+            FoldOp::BinOp(op) => apply!(&Function::Lambda {
+                params: vec!["left".to_string(), "right".to_string()],
+                expr: Expr::Binary(
+                    Box::new(Expr::Atom(Atom::Ref("left".to_string()))),
+                    op,
+                    Box::new(Expr::Atom(Atom::Ref("right".to_string()))),
+                )
+            }),
+
+            FoldOp::FunctionRef(f) => match self.get_variable(&f) {
+                None => Err(format!("variable {} not found", f).into()),
+                Some(Value::Matrix(_)) => Err(Error::from("variable is a matrix")),
+                Some(Value::Function(f)) => apply!(f),
+            },
+        }
+    }
+
     fn execute_map(&mut self, a: &Expr, b: &Expr) -> Result<ExecutorResult, Error> {
         let f = match Value::try_from(self.execute_expr(a)?) {
             Ok(Value::Function(f)) => f,
@@ -749,6 +822,7 @@ impl<'a> Executor<'a> {
             Expr::Binary(a, op, b) => self.execute_binary(*op, a, b),
             Expr::Fold(op, expr) => self.execute_fold_scan(op.clone(), expr, true),
             Expr::Scan(op, expr) => self.execute_fold_scan(op.clone(), expr, false),
+            Expr::Chunker(op, expr) => self.execute_chunker(op.clone(), expr),
 
             Expr::Index(m, indices) => {
                 let indices = self.execute_expr(indices)?.into_iter_shape()?;
