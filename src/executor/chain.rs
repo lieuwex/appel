@@ -10,6 +10,8 @@ use super::{
 
 use dyn_clonable::{dyn_clone::clone_box, *};
 
+use itertools::Itertools;
+
 pub type Error = std::borrow::Cow<'static, str>;
 
 #[clonable]
@@ -97,27 +99,19 @@ impl Chain {
         macro_rules! format_iter {
             ($iterator:expr) => {
                 $iterator
-                    .enumerate()
-                    .map(|(i, val)| {
-                        let val = fmt.apply(&val?);
-                        if i > 0 {
-                            Ok(format!(" {}", val))
-                        } else {
-                            Ok(val)
-                        }
-                    })
-                    .collect::<Result<String, Error>>()?
+                    .map(|val| Ok(fmt.apply(&val?)))
+                    .intersperse(Ok(" ".to_string()))
+                    .collect()
             };
         }
 
-        let res = match self {
-            Chain::Value(Value::Function(f)) => format!("{}", f),
+        match self {
+            Chain::Value(Value::Function(f)) => Ok(format!("{}", f)),
             Chain::Value(Value::Matrix(m)) => {
                 format_iter!(m.into_iter().map(Result::<_, Error>::Ok))
             }
             Chain::Iterator(IterShape { iterator, .. }) => format_iter!(iterator),
-        };
-        Ok(res)
+        }
     }
 }
 
