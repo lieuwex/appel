@@ -96,21 +96,22 @@ impl Chain {
     }
 
     pub fn format(self, fmt: Formatter) -> Result<String, Error> {
-        macro_rules! format_iter {
-            ($iterator:expr) => {
-                $iterator
-                    .map(|val| Ok(fmt.apply(&val?)))
-                    .intersperse(Ok(" ".to_string()))
-                    .collect()
-            };
+        fn format_iter(
+            fmt: Formatter,
+            iterator: impl Iterator<Item = Result<Ratio, Error>>,
+        ) -> Result<String, Error> {
+            iterator
+                .map(|val| Ok(fmt.apply(&val?)))
+                .intersperse(Ok(" ".to_string()))
+                .collect()
         }
 
         match self {
             Chain::Value(Value::Function(f)) => Ok(format!("{}", f)),
             Chain::Value(Value::Matrix(m)) => {
-                format_iter!(m.into_iter().map(Result::<_, Error>::Ok))
+                format_iter(fmt, m.into_iter().map(Result::<_, Error>::Ok))
             }
-            Chain::Iterator(IterShape { iterator, .. }) => format_iter!(iterator),
+            Chain::Iterator(IterShape { iterator, .. }) => format_iter(fmt, iterator),
         }
     }
 }
