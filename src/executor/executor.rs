@@ -688,9 +688,6 @@ impl<'a> Executor<'a> {
             iter_shape: IterShape,
             f: &Function,
         ) -> Result<ExecutorResult, Error> {
-            let e: &'static Executor<'static> = unsafe { std::mem::transmute(e) };
-            let f: &'static Function = unsafe { std::mem::transmute(f) };
-
             let chunk_size = f.params().len();
 
             if iter_shape.len % chunk_size != 0 {
@@ -701,29 +698,21 @@ impl<'a> Executor<'a> {
                 )));
             }
 
-            let chunks: Vec<Vec<_>> = iter_shape
+            let chunks: Result<Vec<_>, Error> = iter_shape
                 .iterator
                 .chunks(chunk_size)
                 .into_iter()
-                .map(|v| {
-                    v.into_iter()
-                        .map(Result::unwrap)
-                        .map(Chain::make_scalar)
-                        .collect()
-                })
-                .collect();
-
-            let it = chunks
-                .into_iter()
-                .map(move |args| {
+                .map(move |args| -> Result<_, Error> {
+                    let args = args.into_iter().map(Result::unwrap).map(Chain::make_scalar);
                     let res = e.call_function(f, args).unwrap();
-                    Matrix::try_from(res).unwrap().into_iter()
+                    Ok(Chain::try_from(res)?.into_iter_shape()?.iterator)
                 })
                 .flatten()
-                .map(Result::Ok);
+                .flatten()
+                .collect();
 
-            let c = Chain::make_vector(Box::new(it), iter_shape.len);
-            Ok(ExecutorResult::Chain(c))
+            let m = Matrix::make_vector(chunks?);
+            Ok(m.into())
         }
         macro_rules! apply {
             ($f:expr) => {
