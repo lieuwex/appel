@@ -684,12 +684,10 @@ impl<'a> Executor<'a> {
         }
 
         fn apply(
-            e: &Executor<'_>,
             iter_shape: IterShape,
-            f: &Function,
+            f: impl Fn(Vec<Chain>) -> Result<ExecutorResult, Error> + Clone,
+            chunk_size: usize,
         ) -> Result<ExecutorResult, Error> {
-            let chunk_size = f.params().len();
-
             if iter_shape.len % chunk_size != 0 {
                 return Err(Error::from(format!(
                     "left hand sides expects {} arguments, but the right hand side length ({}) is not divisible by that",
@@ -703,8 +701,12 @@ impl<'a> Executor<'a> {
                 .chunks(chunk_size)
                 .into_iter()
                 .map(move |args| -> Result<_, Error> {
-                    let args = args.into_iter().map(Result::unwrap).map(Chain::make_scalar);
-                    let res = e.call_function(f, args).unwrap();
+                    let args: Vec<Chain> = args
+                        .into_iter()
+                        .map(Result::unwrap)
+                        .map(Chain::make_scalar)
+                        .collect();
+                    let res = f(args)?;
                     Ok(Chain::try_from(res)?.into_iter_shape()?.iterator)
                 })
                 .flatten()
@@ -715,25 +717,26 @@ impl<'a> Executor<'a> {
             Ok(m.into())
         }
         macro_rules! apply {
-            ($f:expr) => {
-                apply(self, iter_shape, $f)
+            ($chunk_size:expr, $f:expr) => {
+                apply(iter_shape, $f, $chunk_size)
             };
         }
 
         match op {
-            FoldOp::BinOp(op) => apply!(&Function::Lambda {
-                params: vec!["left".to_string(), "right".to_string()],
-                expr: Expr::Binary(
-                    Box::new(Expr::Atom(Atom::Ref("left".to_string()))),
-                    op,
-                    Box::new(Expr::Atom(Atom::Ref("right".to_string()))),
-                )
+            FoldOp::BinOp(op) => apply!(2, |args| {
+                let mut args = args.into_iter();
+                let a = args.next().unwrap();
+                let b = args.next().unwrap();
+
+                call_binary(op, a, b)
             }),
 
             FoldOp::FunctionRef(f) => match self.get_variable(&f) {
                 None => Err(format!("variable {} not found", f).into()),
                 Some(Value::Matrix(_)) => Err(Error::from("variable is a matrix")),
-                Some(Value::Function(f)) => apply!(f),
+                Some(Value::Function(f)) => {
+                    apply!(f.params().len(), |args| self.call_function(f, args))
+                }
             },
         }
     }
