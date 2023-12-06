@@ -1,4 +1,3 @@
-use std::borrow::Cow;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::convert::{TryFrom, TryInto};
 use std::iter;
@@ -113,10 +112,7 @@ fn call_binary(op: BinOp, a: Chain, b: Chain) -> Result<ExecutorResult, Error> {
         f: impl Fn(Rational, Rational) -> Result<Rational, Error> + Clone + 'static,
     ) -> Result<ExecutorResult, Error> {
         if a.len == b.len {
-            let values = (a.iterator)
-                .zip(b.iterator)
-                .map(|(a, b)| Ok((a?, b?)))
-                .map(move |p| p.and_then(|(a, b)| f(a, b)));
+            let values = (a.iterator).zip(b.iterator).map(move |(a, b)| f(a?, b?));
 
             let matrix = Chain::Iterator(IterShape {
                 iterator: Box::new(values),
@@ -130,19 +126,17 @@ fn call_binary(op: BinOp, a: Chain, b: Chain) -> Result<ExecutorResult, Error> {
         } else if b.is_scalar() {
             (b.into_scalar().unwrap(), a, false)
         } else {
-            return Err(Error::from("rank mismatch"));
+            return Err(Error::from("length mismatch"));
         };
 
         let matrix = Chain::Iterator(IterShape {
             iterator: Box::new(non_scalar.iterator.map(move |v| {
                 let scalar = scalar.clone();
-                v.and_then(|v: Rational| {
-                    if scalar_is_left {
-                        f(scalar, v).map(Ratio::from)
-                    } else {
-                        f(v, scalar).map(Ratio::from)
-                    }
-                })
+                if scalar_is_left {
+                    f(scalar, v?).map(Ratio::from)
+                } else {
+                    f(v?, scalar).map(Ratio::from)
+                }
             })),
             len: non_scalar.len,
         });
@@ -243,7 +237,7 @@ fn call_binary(op: BinOp, a: Chain, b: Chain) -> Result<ExecutorResult, Error> {
             let len = bits.len();
             let values = bits
                 .into_iter()
-                .map(|b| Ratio::from_u8(b).unwrap())
+                .map(|b| Ratio::from(b))
                 .map(move |b| {
                     if sign == num_bigint::Sign::Minus {
                         b.neg()
@@ -258,21 +252,23 @@ fn call_binary(op: BinOp, a: Chain, b: Chain) -> Result<ExecutorResult, Error> {
         BinOp::Pack => {
             let a = into_integer_error(a)?;
 
-            let b: Vec<_> = b
+            let b: Result<_, _> = b
                 .iterator
-                .map(Result::unwrap)
                 .map(|v| {
-                    let (numer, denom) = v.into_numer_denom();
+                    v.map(|v| {
+                        let (numer, denom) = v.into_numer_denom();
 
-                    let numer = numer.to_string();
-                    let numer = BigInt::parse_bytes(numer.as_bytes(), 10).unwrap();
+                        let numer = numer.to_string();
+                        let numer = BigInt::parse_bytes(numer.as_bytes(), 10).unwrap();
 
-                    let denom = denom.to_string();
-                    let denom = BigInt::parse_bytes(denom.as_bytes(), 10).unwrap();
+                        let denom = denom.to_string();
+                        let denom = BigInt::parse_bytes(denom.as_bytes(), 10).unwrap();
 
-                    num_rational::BigRational::new_raw(numer, denom)
+                        num_rational::BigRational::new_raw(numer, denom)
+                    })
                 })
                 .collect();
+            let b: Vec<_> = b?;
 
             let radix = a
                 .to_u32()
@@ -285,7 +281,8 @@ fn call_binary(op: BinOp, a: Chain, b: Chain) -> Result<ExecutorResult, Error> {
                 Sign::Plus
             };
 
-            let bits: Vec<u8> = b.iter().map(|b| b.to_integer().to_u8().unwrap()).collect();
+            let bits: Option<Vec<u8>> = b.iter().map(|b| b.to_integer().to_u8()).collect();
+            let bits = bits.ok_or_else(|| Error::from("value too large"))?;
 
             let packed = BigInt::from_radix_be(sign, &bits, radix);
             let int = packed.ok_or(Error::from("couldn't convert bits to int"))?;
@@ -334,14 +331,13 @@ fn call_binary(op: BinOp, a: Chain, b: Chain) -> Result<ExecutorResult, Error> {
 
         BinOp::Mask => {
             // TODO: only LHS has to be collected
-            let values: Vec<_> = (a.iterator)
+            let values: Result<Vec<_>, Error> = (a.iterator)
                 .zip(b.iterator)
-                .map(|(a, b)| (a.unwrap(), b.unwrap()))
-                .filter(|(a, _)| !a.is_zero())
-                .map(|(_, b)| b)
+                .map(|(a, b)| Ok((a?, b?)))
+                .filter_map_ok(|(a, b)| (!a.is_zero()).then_some(b))
                 .collect();
 
-            Ok(Matrix::make_vector(values).into())
+            Ok(Matrix::make_vector(values?).into())
         }
 
         BinOp::Max => apply_ok!(|a: Ratio, b: Ratio| a.max(b)),
@@ -353,20 +349,15 @@ fn call_binary(op: BinOp, a: Chain, b: Chain) -> Result<ExecutorResult, Error> {
             }
 
             let mut it = a.iterator;
-            let new_len = it
-                .next()
-                .unwrap()
-                .unwrap()
-                .into_integer()
-                .ok_or_else(|| Error::from("new length must be an integer"))?;
+            let new_len = it.next().unwrap()?;
             let value = it.next().unwrap();
 
-            let (new_len, at_start) = if (&new_len).signum() == -1 {
+            let (new_len, at_start) = if new_len < 0 {
                 (new_len.neg(), false)
             } else {
                 (new_len, true)
             };
-            let new_len = new_len.to_usize().unwrap();
+            let new_len = to_usize_error(&new_len)?;
 
             let amount = new_len.checked_sub(b.len).ok_or_else(|| {
                 Error::from("vector on the right is longer than the wanted padded length")
@@ -470,7 +461,7 @@ impl<'a> Executor<'a> {
         ) -> Result<ExecutorResult, Error> {
             let IterShape { iterator, len } = res.into_iter_shape()?;
 
-            let values = iterator.map(move |v| v.and_then(&f));
+            let values = iterator.map(move |v| f(v?));
 
             let new = Chain::Iterator(IterShape {
                 iterator: Box::new(values),
@@ -544,7 +535,7 @@ impl<'a> Executor<'a> {
                 let s = expect_scalar(res)?;
                 let upper = to_usize_error(&s)?;
 
-                let it = (1..=upper).map(|v| Ratio::from_usize(v).ok_or(Cow::Borrowed("")));
+                let it = (1..=upper).map(|v| Ok(Ratio::from(v)));
                 let len = upper;
 
                 Ok(Chain::make_vector(Box::new(it), len).into())
@@ -580,10 +571,7 @@ impl<'a> Executor<'a> {
                     values.sort_by(|a, b| b.1.cmp(&a.1))
                 }
 
-                let values = values
-                    .into_iter()
-                    .map(|(i, _)| Ratio::from_usize(i).unwrap())
-                    .map(Result::Ok);
+                let values = values.into_iter().map(|(i, _)| Ok(Ratio::from(i)));
 
                 Ok(Chain::Iterator(IterShape {
                     iterator: Box::new(values),
@@ -833,7 +821,7 @@ impl<'a> Executor<'a> {
 
                 let indices: Vec<usize> = indices
                     .iterator
-                    .map(|v| v.and_then(|v| to_usize_error(&v)))
+                    .map(|v| to_usize_error(&v?))
                     .collect::<Result<_, Error>>()?;
 
                 match m.get_multiple(&indices) {
@@ -906,10 +894,10 @@ impl<'a> Executor<'a> {
                 "n" | "number" => {
                     let parsed = parser::parse(&body)
                         .map_err(|_| Error::from("couldn't parse expression"))?;
-                    if parsed.is_none() {
+                    let Some(parsed) = parsed else {
                         return Ok(ExecutorResult::None);
-                    }
-                    let res = self.execute(parsed.unwrap(), false)?;
+                    };
+                    let res = self.execute(parsed, false)?;
 
                     let s = Matrix::try_from(res)?
                         .iter()
@@ -945,14 +933,12 @@ impl<'a> Executor<'a> {
 
                 "t" | "time" => {
                     let start = Instant::now();
-                    let parsed = parser::parse(&body)
-                        .map_err(|_| Error::from("couldn't parse expression"))?;
-                    if parsed.is_none() {
-                        return Ok(ExecutorResult::None);
-                    }
+                    let parsed =
+                        parser::parse(&body).map_err(|_| Error::from("couldn't parse expression"));
                     eprintln!("parsing took {:?}", start.elapsed());
-
-                    let parsed = parsed.unwrap();
+                    let Some(parsed) = parsed? else {
+                        return Ok(ExecutorResult::None);
+                    };
                     eprintln!("parsed as: {:?}", parsed);
 
                     let start = Instant::now();

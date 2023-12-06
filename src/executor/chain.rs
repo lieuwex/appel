@@ -8,7 +8,7 @@ use super::{
     ExecutorResult, Value,
 };
 
-use dyn_clonable::{dyn_clone::clone_box, *};
+use dyn_clonable::*;
 
 use itertools::Itertools;
 
@@ -18,6 +18,7 @@ pub type Error = std::borrow::Cow<'static, str>;
 pub trait ValueIter: Iterator<Item = Result<Ratio, Error>> + Clone {}
 impl<T> ValueIter for T where T: Iterator<Item = Result<Ratio, Error>> + Clone {}
 
+#[derive(Clone)]
 pub struct IterShape {
     pub iterator: Box<dyn ValueIter>,
     pub len: usize,
@@ -69,6 +70,7 @@ impl From<IterShape> for ExecutorResult {
     }
 }
 
+#[derive(Clone)]
 pub enum Chain {
     Value(Value),
     Iterator(IterShape),
@@ -136,25 +138,13 @@ impl TryFrom<Chain> for Matrix {
     type Error = Error;
 
     fn try_from(chain: Chain) -> Result<Self, Self::Error> {
-        let chain = Value::try_from(chain)?;
-        Self::try_from(chain)
+        let val = Value::try_from(chain)?;
+        Self::try_from(val)
     }
 }
 
 impl From<Chain> for ExecutorResult {
     fn from(c: Chain) -> Self {
         ExecutorResult::Chain(c)
-    }
-}
-
-impl Clone for Chain {
-    fn clone(&self) -> Self {
-        match self {
-            Chain::Value(v) => Chain::Value(v.clone()),
-            Chain::Iterator(IterShape { iterator, len }) => Chain::Iterator(IterShape {
-                iterator: clone_box(iterator),
-                len: *len,
-            }),
-        }
     }
 }
