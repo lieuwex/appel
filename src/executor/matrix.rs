@@ -1,3 +1,4 @@
+use super::chain::Error;
 use super::result::ExecutorResult;
 use super::value::Value;
 use crate::ast::*;
@@ -84,23 +85,23 @@ impl IntoIterator for Matrix {
 }
 
 impl TryFrom<Value> for Matrix {
-    type Error = String;
+    type Error = Error;
 
     fn try_from(res: Value) -> Result<Self, Self::Error> {
         match res {
-            Value::Function(_) => Err(String::from("expected matrix, got a function")),
+            Value::Function(_) => Err(Error::from("expected matrix, got a function")),
             Value::Matrix(m) => Ok(m),
         }
     }
 }
 impl TryFrom<ExecutorResult> for Matrix {
-    type Error = String;
+    type Error = Error;
 
     fn try_from(res: ExecutorResult) -> Result<Self, Self::Error> {
         match res {
-            ExecutorResult::None => Err(String::from("expected value")),
-            ExecutorResult::Info(_) => Err(String::from("expected value, got an info string")),
-            ExecutorResult::Setting(_, _) => Err(String::from("expected value, got a setting")),
+            ExecutorResult::None => Err(Error::from("expected value")),
+            ExecutorResult::Info(_) => Err(Error::from("expected value, got an info string")),
+            ExecutorResult::Setting(_, _) => Err(Error::from("expected value, got a setting")),
             ExecutorResult::Chain(c) => Matrix::try_from(Value::try_from(c)?),
         }
     }

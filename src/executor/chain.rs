@@ -132,10 +132,7 @@ impl TryFrom<Chain> for Matrix {
 
     fn try_from(chain: Chain) -> Result<Self, Self::Error> {
         let chain = Value::try_from(chain)?;
-        match chain {
-            Value::Function(_) => Err(Error::from("expected matrix, got a function")),
-            Value::Matrix(m) => Ok(m),
-        }
+        Self::try_from(chain)
     }
 }
 
