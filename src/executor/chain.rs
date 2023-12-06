@@ -76,7 +76,7 @@ pub enum Chain {
 
 impl Chain {
     pub fn make_scalar(r: Ratio) -> Self {
-        Chain::Value(Value::Matrix(Matrix::make_scalar(r)))
+        Chain::Value(Value::Scalar(r))
     }
 
     pub fn make_vector(iterator: Box<dyn ValueIter>, len: usize) -> Self {
@@ -88,6 +88,10 @@ impl Chain {
             Chain::Value(Value::Function(_)) => Err(Error::from("expected value, got a function")),
 
             Chain::Iterator(iter_shape) => Ok(iter_shape),
+            Chain::Value(Value::Scalar(r)) => Ok(IterShape {
+                iterator: Box::new(std::iter::once(Ok(r))),
+                len: 1,
+            }),
             Chain::Value(Value::Matrix(m)) => Ok(IterShape {
                 len: m.len(),
                 iterator: Box::new(m.into_iter().map(Ok)),
@@ -108,6 +112,7 @@ impl Chain {
 
         match self {
             Chain::Value(Value::Function(f)) => Ok(format!("{}", f)),
+            Chain::Value(Value::Scalar(r)) => Ok(format!("{}", r)),
             Chain::Value(Value::Matrix(m)) => {
                 format_iter(fmt, m.into_iter().map(Result::<_, Error>::Ok))
             }

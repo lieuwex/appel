@@ -32,10 +32,6 @@ impl Formatter {
 pub struct Matrix(Vec<Ratio>);
 
 impl Matrix {
-    pub fn make_scalar(value: Ratio) -> Self {
-        Self(vec![value])
-    }
-
     pub fn make_vector(values: Vec<Ratio>) -> Self {
         Self(values)
     }
@@ -91,6 +87,7 @@ impl TryFrom<Value> for Matrix {
         match res {
             Value::Function(_) => Err(Error::from("expected matrix, got a function")),
             Value::Matrix(m) => Ok(m),
+            Value::Scalar(s) => Ok(Matrix::make_vector(vec![s])),
         }
     }
 }

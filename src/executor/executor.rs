@@ -293,7 +293,7 @@ fn call_binary(op: BinOp, a: Chain, b: Chain) -> Result<ExecutorResult, Error> {
             let int = int.to_string();
             let int = Integer::from_str_radix(&int, 10).unwrap();
 
-            Ok(Matrix::make_scalar(Ratio::from(int)).into())
+            Ok(Chain::make_scalar(Ratio::from(int)).into())
         }
 
         BinOp::In => {
@@ -405,11 +405,11 @@ impl<'a> Executor<'a> {
             ($name:expr, $f:expr) => {
                 res.variables.insert(
                     String::from($name),
-                    Value::Matrix(Matrix::make_scalar({
+                    Value::Scalar({
                         let mut r = Ratio::new();
                         r.assign_f64($f).unwrap();
                         r
-                    })),
+                    }),
                 );
             };
         }
@@ -552,7 +552,7 @@ impl<'a> Executor<'a> {
 
             UnOp::Rho => {
                 let res = res.into_iter_shape()?;
-                Ok(Matrix::make_scalar(Rational::from(res.len)).into())
+                Ok(Chain::make_scalar(Rational::from(res.len)).into())
             }
 
             UnOp::Rev => {
@@ -664,6 +664,7 @@ impl<'a> Executor<'a> {
             FoldOp::FunctionRef(f) => match self.get_variable(&f) {
                 None => Err(format!("variable {} not found", f).into()),
                 Some(Value::Matrix(_)) => Err(Error::from("variable is a matrix")),
+                Some(Value::Scalar(_)) => Err(Error::from("variable is a scalar")),
                 Some(Value::Function(f)) => {
                     if f.params().len() != 2 {
                         return Err(Error::from("function does not take 2 params"));
@@ -740,6 +741,7 @@ impl<'a> Executor<'a> {
             FoldOp::FunctionRef(f) => match self.get_variable(&f) {
                 None => Err(format!("variable {} not found", f).into()),
                 Some(Value::Matrix(_)) => Err(Error::from("variable is a matrix")),
+                Some(Value::Scalar(_)) => Err(Error::from("variable is a scalar")),
                 Some(Value::Function(f)) => {
                     apply!(f.params().len(), |args| self.call_function(f, args))
                 }
@@ -775,7 +777,7 @@ impl<'a> Executor<'a> {
 
     fn execute_expr(&mut self, node: &Expr) -> Result<ExecutorResult, Error> {
         match node {
-            Expr::Atom(Atom::Rat(v)) => Ok(Matrix::make_scalar(v.clone()).into()),
+            Expr::Atom(Atom::Rat(v)) => Ok(Chain::make_scalar(v.clone()).into()),
             Expr::Atom(Atom::Ref(s)) => {
                 let var = match self.get_variable(s) {
                     None => return Err(format!("variable {} not found", s).into()),
@@ -796,6 +798,8 @@ impl<'a> Executor<'a> {
                         let args = expressions.into_iter().skip(1).map(Chain::Value);
                         self.call_function(&f, args)
                     }
+
+                    Value::Scalar(r) => Ok(r.into()),
 
                     Value::Matrix(first) => {
                         if expressions.len() == 1 {
@@ -861,6 +865,7 @@ impl<'a> Executor<'a> {
         let is_conflict = |old: Option<&Value>, new_is_fun: bool| match old {
             None => false,
             Some(Value::Matrix(_)) => new_is_fun,
+            Some(Value::Scalar(_)) => new_is_fun,
             Some(Value::Function(_)) => !new_is_fun,
         };
 
