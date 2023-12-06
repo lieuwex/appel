@@ -428,11 +428,8 @@ impl<'a> Executor<'a> {
     fn call_function(
         &self,
         f: &Function,
-        args: impl IntoIterator<Item = Chain>,
+        args: impl Iterator<Item = Value> + ExactSizeIterator,
     ) -> Result<ExecutorResult, Error> {
-        let args: Result<Vec<Value>, _> = args.into_iter().map(Value::try_from).collect();
-        let args = args?;
-
         if args.len() != f.params().len() {
             return Err(
                 format!("expected {} arguments got {}", f.params().len(), args.len()).into(),
@@ -604,7 +601,7 @@ impl<'a> Executor<'a> {
         fn apply(
             iter_shape: IterShape,
             is_fold: bool,
-            f: impl Fn(Chain, Chain) -> Result<ExecutorResult, Error>,
+            f: impl Fn(Value, Value) -> Result<ExecutorResult, Error>,
         ) -> Result<ExecutorResult, Error> {
             if is_fold {
                 let mut it = iter_shape.iterator;
@@ -613,13 +610,7 @@ impl<'a> Executor<'a> {
                 // fold
                 it.try_fold(
                     ExecutorResult::Chain(Chain::make_scalar(first?)),
-                    |acc, item| -> Result<ExecutorResult, Error> {
-                        let acc = acc.into_iter_shape()?.scalar().unwrap();
-                        let acc = Chain::make_scalar(acc);
-
-                        let item = Chain::make_scalar(item?);
-                        f(acc, item)
-                    },
+                    |acc, item| f(acc.try_into()?, item?.into()),
                 )
             } else {
                 let mut it = iter_shape.iterator;
@@ -632,8 +623,8 @@ impl<'a> Executor<'a> {
                         Some(i) => i?,
                     };
 
-                    let prev = Chain::make_scalar(accum.last().unwrap().clone());
-                    let curr = Chain::make_scalar(item);
+                    let prev = Value::from(accum.last().unwrap().clone());
+                    let curr = Value::from(item);
 
                     let res = f(prev, curr)?;
                     accum.push(expect_scalar(res)?)
@@ -647,7 +638,7 @@ impl<'a> Executor<'a> {
         }
 
         match op {
-            FoldOp::BinOp(op) => apply!(|acc, item| call_binary(op, acc, item)),
+            FoldOp::BinOp(op) => apply!(|acc, item| call_binary(op, acc.into(), item.into())),
 
             FoldOp::FunctionRef(f) => match self.get_variable(&f) {
                 None => Err(format!("variable {} not found", f).into()),
@@ -660,7 +651,7 @@ impl<'a> Executor<'a> {
 
                     apply!(|acc, item| {
                         let args = [acc, item];
-                        let res = self.call_function(f, args)?;
+                        let res = self.call_function(f, args.into_iter())?;
                         Ok(res)
                     })
                 }
@@ -677,7 +668,7 @@ impl<'a> Executor<'a> {
         fn apply(
             iter_shape: IterShape,
             chunk_size: usize,
-            f: impl Fn(Vec<Chain>) -> Result<ExecutorResult, Error>,
+            f: impl Fn(Vec<Value>) -> Result<ExecutorResult, Error>,
         ) -> Result<ExecutorResult, Error> {
             if iter_shape.len % chunk_size != 0 {
                 return Err(Error::from(format!(
@@ -691,11 +682,9 @@ impl<'a> Executor<'a> {
                 .iterator
                 .chunks(chunk_size)
                 .into_iter()
-                .map(move |args| -> Result<_, Error> {
-                    let args: Result<Vec<Chain>, _> = args
-                        .into_iter()
-                        .map(|v| v.map(Chain::make_scalar))
-                        .collect();
+                .map(|args| -> Result<_, Error> {
+                    let args: Result<Vec<Value>, _> =
+                        args.into_iter().map(|v| v.map(Value::Scalar)).collect();
 
                     let args = args?;
                     assert_eq!(args.len(), chunk_size);
@@ -723,7 +712,7 @@ impl<'a> Executor<'a> {
                 let a = args.next().unwrap();
                 let b = args.next().unwrap();
 
-                call_binary(op, a, b)
+                call_binary(op, a.into(), b.into())
             }),
 
             FoldOp::FunctionRef(f) => match self.get_variable(&f) {
@@ -731,7 +720,8 @@ impl<'a> Executor<'a> {
                 Some(Value::Matrix(_)) => Err(Error::from("variable is a matrix")),
                 Some(Value::Scalar(_)) => Err(Error::from("variable is a scalar")),
                 Some(Value::Function(f)) => {
-                    apply!(f.params().len(), |args| self.call_function(f, args))
+                    apply!(f.params().len(), |args| self
+                        .call_function(f, args.into_iter()))
                 }
             },
         }
@@ -747,7 +737,7 @@ impl<'a> Executor<'a> {
         for value in x.iter_mut() {
             replace_with_or_default_and_return(value, |value| {
                 let res: Result<Rational, Error> = (|| {
-                    let res = self.call_function(&f, iter::once(Chain::make_scalar(value)))?;
+                    let res = self.call_function(&f, iter::once(value.into()))?;
                     res.into_iter_shape()?
                         .into_scalar()
                         .ok_or(Error::from("Function returned non-scalar in map"))
@@ -783,7 +773,7 @@ impl<'a> Executor<'a> {
 
                 match expressions[0].clone() {
                     Value::Function(f) => {
-                        let args = expressions.into_iter().skip(1).map(Chain::Value);
+                        let args = expressions.into_iter().skip(1);
                         self.call_function(&f, args)
                     }
 
@@ -831,7 +821,7 @@ impl<'a> Executor<'a> {
             }
 
             Expr::Let(name, expr, body) => {
-                let expr: Chain = self.execute_expr(expr)?.try_into()?;
+                let expr: Value = self.execute_expr(expr)?.try_into()?;
                 self.call_function(
                     &Function::Lambda {
                         params: vec![name.clone()],

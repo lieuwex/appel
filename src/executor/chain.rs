@@ -148,3 +148,9 @@ impl From<Chain> for ExecutorResult {
         ExecutorResult::Chain(c)
     }
 }
+
+impl From<Value> for Chain {
+    fn from(value: Value) -> Self {
+        Self::Value(value)
+    }
+}
