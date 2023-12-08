@@ -147,7 +147,6 @@ impl fmt::Display for BinOp {
 pub enum FoldOp {
     BinOp(BinOp),
     Expr(Box<Expr>),
-    FunctionRef(String),
 }
 
 impl fmt::Display for FoldOp {
@@ -155,7 +154,6 @@ impl fmt::Display for FoldOp {
         match self {
             FoldOp::BinOp(op) => write!(f, "{}", op),
             FoldOp::Expr(expr) => write!(f, "{}", expr),
-            FoldOp::FunctionRef(fun) => write!(f, "{}", fun),
         }
     }
 }
@@ -174,7 +172,7 @@ pub enum Expr {
     Binary(Box<Expr>, BinOp, Box<Expr>),
     Fold(FoldOp, Box<Expr>),
     Scan(FoldOp, Box<Expr>),
-    Chunker(FoldOp, Box<Expr>),
+    Map(FoldOp, Box<Expr>),
     Index(Box<Expr>, Box<Expr>),       // vector, indices
     Let(String, Box<Expr>, Box<Expr>), // let 0 = 1 in 2
     Lambda(Vec<String>, Box<Expr>),    // params, body
@@ -205,7 +203,7 @@ impl fmt::Display for Expr {
             Expr::Binary(a, op, b) => (format!("{} {} {}", a, op, b), true),
             Expr::Fold(op, expr) => (format!("{}//{}", op, expr), true),
             Expr::Scan(op, expr) => (format!(r"{}\\{}", op, expr), true),
-            Expr::Chunker(op, expr) => (format!(r"{}||{}", op, expr), true),
+            Expr::Map(op, expr) => (format!(r"{}||{}", op, expr), true),
             Expr::Index(vec, indices) => (format!("{}[{}]", vec, indices), false),
             Expr::Let(name, expr, body) => (format!("let {name} = {expr} in {body}"), true),
             Expr::Lambda(variables, body) => {

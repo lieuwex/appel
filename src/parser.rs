@@ -374,47 +374,39 @@ fn p_expr_9<'a>() -> Parser<'a, Expr> {
     )
 }
 
+fn p_foldlike<'a>(ops: &'static str) -> Parser<'a, (FoldOp, Box<Expr>)> {
+    let op_p = binary_op().map(FoldOp::BinOp);
+    let op =
+        (op_p - symbol_both(operator(ops)) + call(p_expr)).map(|(op, expr)| (op, Box::new(expr)));
+
+    let expr = (call(p_expr_0) - symbol_both(operator(ops)) + call(p_expr))
+        .map(|(op, expr)| (FoldOp::Expr(Box::new(op)), Box::new(expr)));
+
+    op | expr
+}
+
 /// Scan
 fn p_expr_10<'a>() -> Parser<'a, Expr> {
-    // TODO: make scan also able to parse expressions in the left hand side, then remove
-    // FoldOp::FunctionRef.
-
-    let op_p = binary_op().map(FoldOp::BinOp) | p_varname().map(FoldOp::FunctionRef);
-    let scan = (op_p - symbol_both(operator(r"\\")) + call(p_expr))
-        .map(|(op, expr)| Expr::Scan(op, Box::new(expr)));
-
-    scan.name("scan") | p_expr_9()
+    (p_foldlike(r"\\")
+        .map(|(op, expr)| Expr::Scan(op, expr))
+        .name("scan"))
+        | p_expr_9()
 }
 
 /// Fold
 fn p_expr_11<'a>() -> Parser<'a, Expr> {
-    // TODO: make fold also able to parse expressions in the left hand side, then remove
-    // FoldOp::FunctionRef.
-
-    let op_p = binary_op().map(FoldOp::BinOp) | p_varname().map(FoldOp::FunctionRef);
-    let fold = (op_p - symbol_both(operator("//")) + call(p_expr))
-        .map(|(op, expr)| Expr::Fold(op, Box::new(expr)));
-
-    fold.name("fold") | p_expr_10()
+    (p_foldlike("//")
+        .map(|(op, expr)| Expr::Fold(op, expr))
+        .name("fold"))
+        | p_expr_10()
 }
 
-/// Chunker
+/// Map
 fn p_expr_12<'a>() -> Parser<'a, Expr> {
-    fn expr<'b>() -> Parser<'b, Expr> {
-        right_recurse(
-            p_expr_8,
-            symbol_both(operator("||")),
-            p_expr_8,
-            "special binary",
-            |e1, _, e2| Expr::Chunker(FoldOp::Expr(Box::new(e1)), Box::new(e2)),
-        )
-    }
-
-    let op_p = binary_op().map(FoldOp::BinOp);
-    let fold = (op_p - symbol_both(operator("||")) + call(p_expr))
-        .map(|(op, expr)| Expr::Chunker(op, Box::new(expr)));
-
-    fold.name("chunker") | expr().name("chunker") | p_expr_11()
+    (p_foldlike(".")
+        .map(|(op, expr)| Expr::Map(op, expr))
+        .name("map"))
+        | p_expr_11()
 }
 
 /// Let binding
@@ -573,6 +565,6 @@ mod tests {
 
     #[test]
     fn test_chunker() {
-        assert!(is_ok_some!(parse(r"f || 1 2 3")));
+        assert!(is_ok_some!(parse(r"f . 1 2 3")));
     }
 }

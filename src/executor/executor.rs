@@ -649,18 +649,6 @@ impl<'a> Executor<'a> {
                     Ok(res)
                 })
             }
-
-            // TODO: remove this
-            FoldOp::FunctionRef(name) => match self.get_variable(&name) {
-                Some(Value::Function(f)) => {
-                    apply!(|acc, item| {
-                        let args = [acc, item];
-                        let res = self.call_function(&f, args.into_iter())?;
-                        Ok(res)
-                    })
-                }
-                _ => return Err(Error::from("left hand side is not a function")),
-            },
         }
     }
 
@@ -728,9 +716,6 @@ impl<'a> Executor<'a> {
                 apply!(f.params().len(), |args| self
                     .call_function(&f, args.into_iter()))
             }
-
-            // TODO: remove this
-            FoldOp::FunctionRef(_) => unreachable!("this can't be parsed by the parser"),
         }
     }
 
@@ -782,7 +767,7 @@ impl<'a> Executor<'a> {
             Expr::Binary(a, op, b) => self.execute_binary(*op, a, b),
             Expr::Fold(op, expr) => self.execute_fold_scan(op.clone(), expr, true),
             Expr::Scan(op, expr) => self.execute_fold_scan(op.clone(), expr, false),
-            Expr::Chunker(op, expr) => self.execute_chunker(op.clone(), expr),
+            Expr::Map(op, expr) => self.execute_chunker(op.clone(), expr),
 
             Expr::Index(m, indices) => {
                 let indices = self.execute_expr(indices)?.into_iter_shape()?;
