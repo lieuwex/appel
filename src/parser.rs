@@ -58,7 +58,6 @@ fn binary_op<'a>() -> Parser<'a, BinOp> {
         | symbol_both(operator("max")).map(|_| BinOp::Max)
         | symbol_both(operator("min")).map(|_| BinOp::Min)
         | symbol_both(operator("pad")).map(|_| BinOp::Pad)
-        | operator(".").map(|_| BinOp::Map)
         | operator("**").map(|_| BinOp::Pow)
         | operator("*").map(|_| BinOp::Mul)
         | operator("/").map(|_| BinOp::Div)
@@ -364,8 +363,7 @@ fn p_expr_9<'a>() -> Parser<'a, Expr> {
         | symbol_both(operator("mask")).map(|_| BinOp::Mask)
         | symbol_both(operator("max")).map(|_| BinOp::Max)
         | symbol_both(operator("min")).map(|_| BinOp::Min)
-        | symbol_both(operator("pad")).map(|_| BinOp::Pad)
-        | symbol_both(operator(".")).map(|_| BinOp::Map);
+        | symbol_both(operator("pad")).map(|_| BinOp::Pad);
 
     right_recurse(
         p_expr_8,
@@ -378,6 +376,9 @@ fn p_expr_9<'a>() -> Parser<'a, Expr> {
 
 /// Scan
 fn p_expr_10<'a>() -> Parser<'a, Expr> {
+    // TODO: make scan also able to parse expressions in the left hand side, then remove
+    // FoldOp::FunctionRef.
+
     let op_p = binary_op().map(FoldOp::BinOp) | p_varname().map(FoldOp::FunctionRef);
     let scan = (op_p - symbol_both(operator(r"\\")) + call(p_expr))
         .map(|(op, expr)| Expr::Scan(op, Box::new(expr)));
@@ -387,6 +388,9 @@ fn p_expr_10<'a>() -> Parser<'a, Expr> {
 
 /// Fold
 fn p_expr_11<'a>() -> Parser<'a, Expr> {
+    // TODO: make fold also able to parse expressions in the left hand side, then remove
+    // FoldOp::FunctionRef.
+
     let op_p = binary_op().map(FoldOp::BinOp) | p_varname().map(FoldOp::FunctionRef);
     let fold = (op_p - symbol_both(operator("//")) + call(p_expr))
         .map(|(op, expr)| Expr::Fold(op, Box::new(expr)));
@@ -396,11 +400,21 @@ fn p_expr_11<'a>() -> Parser<'a, Expr> {
 
 /// Chunker
 fn p_expr_12<'a>() -> Parser<'a, Expr> {
-    let op_p = binary_op().map(FoldOp::BinOp) | p_varname().map(FoldOp::FunctionRef);
+    fn expr<'b>() -> Parser<'b, Expr> {
+        right_recurse(
+            p_expr_8,
+            symbol_both(operator("||")),
+            p_expr_8,
+            "special binary",
+            |e1, _, e2| Expr::Chunker(FoldOp::Expr(Box::new(e1)), Box::new(e2)),
+        )
+    }
+
+    let op_p = binary_op().map(FoldOp::BinOp);
     let fold = (op_p - symbol_both(operator("||")) + call(p_expr))
         .map(|(op, expr)| Expr::Chunker(op, Box::new(expr)));
 
-    fold.name("chunker") | p_expr_11()
+    fold.name("chunker") | expr().name("chunker") | p_expr_11()
 }
 
 /// Let binding

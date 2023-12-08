@@ -11,7 +11,6 @@ use crate::{ast::*, collect_point};
 use itertools::Itertools;
 use num_bigint::{BigInt, Sign};
 use num_traits::*;
-use replace_with::replace_with_or_default_and_return;
 use rug::{Assign, Float, Integer, Rational};
 
 use rand::prelude::*;
@@ -372,8 +371,6 @@ fn call_binary(op: BinOp, a: Chain, b: Chain) -> Result<ExecutorResult, Error> {
 
             Ok(Chain::make_vector(values, new_len).into())
         }
-
-        BinOp::Map => unreachable!(),
     }
 }
 
@@ -640,21 +637,29 @@ impl<'a> Executor<'a> {
         match op {
             FoldOp::BinOp(op) => apply!(|acc, item| call_binary(op, acc.into(), item.into())),
 
-            FoldOp::FunctionRef(f) => match self.get_variable(&f) {
-                None => Err(format!("variable {} not found", f).into()),
-                Some(Value::Matrix(_)) => Err(Error::from("variable is a matrix")),
-                Some(Value::Scalar(_)) => Err(Error::from("variable is a scalar")),
-                Some(Value::Function(f)) => {
-                    if f.params().len() != 2 {
-                        return Err(Error::from("function does not take 2 params"));
-                    }
+            FoldOp::Expr(expr) => {
+                let f = match Value::try_from(self.execute_expr(&expr)?) {
+                    Ok(Value::Function(f)) => f,
+                    _ => return Err(Error::from("expected left hand to be a function")),
+                };
 
+                apply!(|acc, item| {
+                    let args = [acc, item];
+                    let res = self.call_function(&f, args.into_iter())?;
+                    Ok(res)
+                })
+            }
+
+            // TODO: remove this
+            FoldOp::FunctionRef(name) => match self.get_variable(&name) {
+                Some(Value::Function(f)) => {
                     apply!(|acc, item| {
                         let args = [acc, item];
-                        let res = self.call_function(f, args.into_iter())?;
+                        let res = self.call_function(&f, args.into_iter())?;
                         Ok(res)
                     })
                 }
+                _ => return Err(Error::from("left hand side is not a function")),
             },
         }
     }
@@ -662,7 +667,7 @@ impl<'a> Executor<'a> {
     fn execute_chunker(&mut self, op: FoldOp, expr: &Expr) -> Result<ExecutorResult, Error> {
         let iter_shape = self.execute_expr(expr)?.into_iter_shape()?;
         if iter_shape.len < 1 {
-            return Err(Error::from("matrix must have at least 1 value"));
+            return Ok(iter_shape.into());
         }
 
         fn apply(
@@ -715,42 +720,18 @@ impl<'a> Executor<'a> {
                 call_binary(op, a.into(), b.into())
             }),
 
-            FoldOp::FunctionRef(f) => match self.get_variable(&f) {
-                None => Err(format!("variable {} not found", f).into()),
-                Some(Value::Matrix(_)) => Err(Error::from("variable is a matrix")),
-                Some(Value::Scalar(_)) => Err(Error::from("variable is a scalar")),
-                Some(Value::Function(f)) => {
-                    apply!(f.params().len(), |args| self
-                        .call_function(f, args.into_iter()))
-                }
-            },
+            FoldOp::Expr(expr) => {
+                let f = match Value::try_from(self.execute_expr(&expr)?) {
+                    Ok(Value::Function(f)) => f,
+                    _ => return Err(Error::from("expected left hand to be a function")),
+                };
+                apply!(f.params().len(), |args| self
+                    .call_function(&f, args.into_iter()))
+            }
+
+            // TODO: remove this
+            FoldOp::FunctionRef(_) => unreachable!("this can't be parsed by the parser"),
         }
-    }
-
-    fn execute_map(&mut self, a: &Expr, b: &Expr) -> Result<ExecutorResult, Error> {
-        let f = match Value::try_from(self.execute_expr(a)?) {
-            Ok(Value::Function(f)) => f,
-            _ => return Err(Error::from("expected left hand to be a function")),
-        };
-        let mut x = Matrix::try_from(self.execute_expr(b)?)?;
-
-        for value in x.iter_mut() {
-            replace_with_or_default_and_return(value, |value| {
-                let res: Result<Rational, Error> = (|| {
-                    let res = self.call_function(&f, iter::once(value.into()))?;
-                    res.into_iter_shape()?
-                        .into_scalar()
-                        .ok_or(Error::from("Function returned non-scalar in map"))
-                })();
-
-                match res {
-                    Ok(r) => (Ok(()), r),
-                    Err(e) => (Err(e), Rational::default()),
-                }
-            })?;
-        }
-
-        Ok(ExecutorResult::from(x))
     }
 
     fn execute_expr(&mut self, node: &Expr) -> Result<ExecutorResult, Error> {
@@ -798,7 +779,6 @@ impl<'a> Executor<'a> {
             }
 
             Expr::Unary(op, expr) => self.execute_unary(*op, expr),
-            Expr::Binary(a, BinOp::Map, b) => self.execute_map(a, b),
             Expr::Binary(a, op, b) => self.execute_binary(*op, a, b),
             Expr::Fold(op, expr) => self.execute_fold_scan(op.clone(), expr, true),
             Expr::Scan(op, expr) => self.execute_fold_scan(op.clone(), expr, false),

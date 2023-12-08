@@ -98,7 +98,6 @@ pub enum BinOp {
     Div,
     Mod,
     Pow,
-    Map,
     Concat,
 
     CompOp(CompOp),
@@ -125,7 +124,6 @@ impl fmt::Display for BinOp {
             BinOp::Div => write!(f, "/"),
             BinOp::Mod => write!(f, "%"),
             BinOp::Pow => write!(f, "**"),
-            BinOp::Map => write!(f, "."),
             BinOp::Concat => write!(f, ","),
 
             BinOp::CompOp(x) => write!(f, "{}", x),
@@ -145,9 +143,10 @@ impl fmt::Display for BinOp {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug)]
 pub enum FoldOp {
     BinOp(BinOp),
+    Expr(Box<Expr>),
     FunctionRef(String),
 }
 
@@ -155,6 +154,7 @@ impl fmt::Display for FoldOp {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             FoldOp::BinOp(op) => write!(f, "{}", op),
+            FoldOp::Expr(expr) => write!(f, "{}", expr),
             FoldOp::FunctionRef(fun) => write!(f, "{}", fun),
         }
     }
