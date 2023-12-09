@@ -737,25 +737,29 @@ impl<'a> Executor<'a> {
                     .map(|e| Value::try_from(self.execute_expr(e)?))
                     .collect::<Result<_, Error>>()?;
 
-                match expressions[0].clone() {
-                    Value::Function(f) => {
-                        let args = expressions.into_iter().skip(1);
-                        self.call_function(&f, args)
+                match &expressions[0] {
+                    Value::Function(_) => {
+                        let mut e = expressions.into_iter();
+                        let Value::Function(f) = e.next().unwrap() else {
+                            unreachable!()
+                        };
+                        self.call_function(&f, e)
                     }
 
-                    Value::Scalar(r) => Ok(r.into()),
+                    Value::Scalar(_) | Value::Matrix(_) => {
+                        let len = expressions.len();
+                        let mut expressions = expressions.into_iter();
 
-                    Value::Matrix(first) => {
-                        if expressions.len() == 1 {
-                            return Ok(first.into());
+                        if len == 1 {
+                            return Ok(expressions.next().unwrap().into());
                         }
 
-                        let len = expressions.len();
-                        let values = expressions.into_iter().map(|e| {
-                            match Matrix::try_from(e)?.into_scalar() {
-                                None => Err(Error::from("nested matrices aren't allowed")),
-                                Some(s) => Ok(s),
-                            }
+                        let values = expressions.map(|v| match v {
+                            Value::Matrix(m) => m
+                                .into_scalar()
+                                .ok_or_else(|| Error::from("nested matrices aren't allowed")),
+                            Value::Scalar(r) => Ok(r),
+                            Value::Function(_) => Err(Error::from("expected scalar, got function")),
                         });
 
                         Ok(Chain::make_vector(Box::new(values), len).into())
