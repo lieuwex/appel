@@ -1,4 +1,4 @@
-use std::convert::TryFrom;
+use std::{convert::TryFrom, iter};
 
 use crate::ast::Ratio;
 use crate::collect_point;
@@ -37,11 +37,18 @@ impl IterShape {
         })
     }
 
-    pub fn into_scalar(mut self) -> Option<Ratio> {
-        self.is_scalar().then(|| {
-            // TODO
-            self.iterator.next().unwrap().unwrap()
-        })
+    pub fn into_scalar(mut self) -> Result<Ratio, Self> {
+        if self.is_scalar() {
+            Ok(self.iterator.next().unwrap().unwrap())
+        } else {
+            Err(self)
+        }
+    }
+}
+
+impl std::fmt::Debug for IterShape {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("IterShape").field("len", &self.len).finish()
     }
 }
 
@@ -129,7 +136,10 @@ impl TryFrom<Chain> for Value {
     fn try_from(value: Chain) -> Result<Self, Self::Error> {
         match value {
             Chain::Value(v) => Ok(v),
-            Chain::Iterator(iter_shape) => Matrix::try_from(iter_shape).map(Value::Matrix),
+            Chain::Iterator(iter_shape) => match iter_shape.into_scalar() {
+                Ok(s) => Ok(Value::Scalar(s)),
+                Err(iter_shape) => Matrix::try_from(iter_shape).map(Value::Matrix),
+            },
         }
     }
 }

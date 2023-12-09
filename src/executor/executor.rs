@@ -61,8 +61,8 @@ pub struct Executor<'a> {
 
 fn expect_scalar(v: ExecutorResult) -> Result<Ratio, Error> {
     match v.into_iter_shape()?.into_scalar() {
-        None => Err(Error::from("expected scalar")),
-        Some(s) => Ok(s),
+        Err(_) => Err(Error::from("expected scalar")),
+        Ok(s) => Ok(s),
     }
 }
 
@@ -77,7 +77,7 @@ fn to_usize_error(rat: &Ratio) -> Result<usize, Error> {
 fn into_integer_error(iter_shape: IterShape) -> Result<Integer, Error> {
     let scalar = iter_shape
         .into_scalar()
-        .ok_or_else(|| Error::from("expected scalar, got vector"))?;
+        .map_err(|_| Error::from("expected scalar, got vector"))?;
     let n = scalar
         .into_integer()
         .ok_or_else(|| Error::from("value must be an integer"))?;
@@ -207,7 +207,7 @@ fn call_binary(op: BinOp, a: Chain, b: Chain) -> Result<ExecutorResult, Error> {
         BinOp::Rho => {
             let len = a
                 .into_scalar()
-                .ok_or_else(|| Error::from("expected scalar"))?;
+                .map_err(|_| Error::from("expected scalar"))?;
             let len = to_usize_error(&len)?;
 
             let values = std::iter::repeat(b.iterator).flatten().take(len);
@@ -736,6 +736,7 @@ impl<'a> Executor<'a> {
                     .iter()
                     .map(|e| Value::try_from(self.execute_expr(e)?))
                     .collect::<Result<_, Error>>()?;
+                collect_point!();
 
                 match &expressions[0] {
                     Value::Function(_) => {
