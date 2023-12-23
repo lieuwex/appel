@@ -132,9 +132,9 @@ fn call_binary(op: BinOp, a: Chain, b: Chain) -> Result<ExecutorResult, Error> {
             iterator: Box::new(non_scalar.iterator.map(move |v| {
                 let scalar = scalar.clone();
                 if scalar_is_left {
-                    f(scalar, v?).map(Ratio::from)
+                    f(scalar, v?)
                 } else {
-                    f(v?, scalar).map(Ratio::from)
+                    f(v?, scalar)
                 }
             })),
             len: non_scalar.len,

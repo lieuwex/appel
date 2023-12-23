@@ -49,7 +49,7 @@ impl State {
                                 let precision = n
                                     .trim()
                                     .parse::<usize>()
-                                    .map_err(|_| "conversion error".to_owned())?;
+                                    .map_err(|_| Error::from("conversion error"))?;
                                 Formatter::Float(Some(precision))
                             }
                         };
