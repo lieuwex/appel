@@ -203,7 +203,7 @@ impl fmt::Display for Expr {
             Expr::Binary(a, op, b) => (format!("{} {} {}", a, op, b), true),
             Expr::Fold(op, expr) => (format!("{}//{}", op, expr), true),
             Expr::Scan(op, expr) => (format!(r"{}\\{}", op, expr), true),
-            Expr::Map(op, expr) => (format!(r"{}||{}", op, expr), true),
+            Expr::Map(op, expr) => (format!(r"{} . {}", op, expr), true),
             Expr::Index(vec, indices) => (format!("{}[{}]", vec, indices), false),
             Expr::Let(name, expr, body) => (format!("let {name} = {expr} in {body}"), true),
             Expr::Lambda(variables, body) => {
