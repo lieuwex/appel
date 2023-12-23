@@ -926,3 +926,68 @@ impl<'a> Executor<'a> {
         res
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    macro_rules! eval {
+        ($exec:expr, $line:expr) => {{
+            let s = parser::parse($line).unwrap().unwrap();
+            $exec.execute(s, false).unwrap()
+        }};
+    }
+
+    #[test]
+    fn test_parse_prelude() {
+        let lines = r#"
+fn avg xs = (+//xs)/(rho xs)
+fn sqrt x = x ** (1/2)
+fn norm xs = sqrt (+//(xs ** 2))
+fn head n xs = n rho xs
+fn tail n xs = n drop xs
+fn time x = (floor x) ((x-floor x) * 60)
+fn fact n = *//iota n
+fn binom n k = (fact n)/((fact k) * (fact (n-k)))
+fn normalize v = v/(dist v)
+fn dot v1 v2 = +//(v1 * v2)
+fn frombase b digs = +//(digs * (b ** ((rev iota rho digs) - 1)))
+fn timesecs xs = frombase 60 xs
+fn identity size = size size rho ((iota (size+1)) == 1)
+fn bitmask n = rev (2 ** ((iota n)-1))
+        "#;
+
+        let mut exec = Executor::new();
+
+        for l in lines.lines() {
+            let Some(p) = parser::parse(l).unwrap() else {
+                continue;
+            };
+            let res = exec.execute(p, true).unwrap();
+            assert!(matches!(res, ExecutorResult::Chain(_)));
+        }
+    }
+
+    #[test]
+    fn test_prelude_avg() {
+        let mut exec = Executor::new();
+
+        eval!(exec, "fn avg xs = (+//xs)/(rho xs)");
+
+        let res = eval!(exec, "avg (5 5)");
+        assert!(res.into_iter_shape().unwrap().into_scalar().unwrap() == 5);
+    }
+
+    #[test]
+    fn test_map() {
+        let mut exec = Executor::new();
+
+        eval!(exec, "fn f a b = a + b");
+
+        let res = eval!(exec, "f . (1 1 2 2)");
+        let res: Result<Vec<_>, _> = res.into_iter_shape().unwrap().iterator.collect();
+        let res = res.unwrap();
+
+        assert_eq!(res, vec![2, 4]);
+    }
+}

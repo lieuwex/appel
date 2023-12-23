@@ -564,7 +564,7 @@ mod tests {
     }
 
     #[test]
-    fn test_chunker() {
+    fn test_map() {
         assert!(is_ok_some!(parse(r"f . 1 2 3")));
     }
 }
