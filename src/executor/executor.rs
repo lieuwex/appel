@@ -985,4 +985,14 @@ fn bitmask n = rev (2 ** ((iota n)-1))
 
         assert_eq!(res, vec![2, 4]);
     }
+
+    #[test]
+    fn test_lambda_call() {
+        let mut exec = Executor::new();
+
+        let res = eval!(exec, r#"(\a -> a + 1) 1"#);
+        let res = res.into_iter_shape().unwrap().into_scalar().unwrap();
+
+        assert_eq!(res, 2);
+    }
 }
