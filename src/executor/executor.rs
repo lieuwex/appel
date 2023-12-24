@@ -995,4 +995,22 @@ fn bitmask n = rev (2 ** ((iota n)-1))
 
         assert_eq!(res, 2);
     }
+
+    #[test]
+    fn test_recursive_clusterfuck() {
+        let mut exec = Executor::new();
+
+        eval!(exec, "fn head n xs = (n rho xs)");
+        eval!(
+            exec,
+            // credits to tom
+            "fn fact n = head 1 ((((n != 0) rho n) * (fact . ((n != 0) rho (n - 1)))) , 1)"
+        );
+
+        let res = eval!(exec, "fact . (1 2 3 4 5)");
+        let res: Result<Vec<_>, _> = res.into_iter_shape().unwrap().iterator.collect();
+        let res = res.unwrap();
+
+        assert_eq!(res, vec![1, 2, 6, 24, 120]);
+    }
 }
