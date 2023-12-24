@@ -433,7 +433,7 @@ impl<'a> Executor<'a> {
             );
         }
 
-        let mut ctx = Executor {
+        let ctx = Executor {
             previous: Some(self),
             variables: f
                 .params()
@@ -446,7 +446,7 @@ impl<'a> Executor<'a> {
         ctx.execute_expr(f.expr())
     }
 
-    fn execute_unary(&mut self, op: UnOp, expr: &Expr) -> Result<ExecutorResult, Error> {
+    fn execute_unary(&self, op: UnOp, expr: &Expr) -> Result<ExecutorResult, Error> {
         let res = self.execute_expr(expr)?;
 
         fn for_all(
@@ -576,7 +576,7 @@ impl<'a> Executor<'a> {
         }
     }
 
-    fn execute_binary(&mut self, op: BinOp, a: &Expr, b: &Expr) -> Result<ExecutorResult, Error> {
+    fn execute_binary(&self, op: BinOp, a: &Expr, b: &Expr) -> Result<ExecutorResult, Error> {
         // (a/b)^(c/d) = (\sqrt d {a^c}) / (\sqrt d {b ^c})
 
         let a = self.execute_expr(a)?.try_into()?;
@@ -585,7 +585,7 @@ impl<'a> Executor<'a> {
     }
 
     fn execute_fold_scan(
-        &mut self,
+        &self,
         op: FoldOp,
         expr: &Expr,
         is_fold: bool,
@@ -652,7 +652,7 @@ impl<'a> Executor<'a> {
         }
     }
 
-    fn execute_chunker(&mut self, op: FoldOp, expr: &Expr) -> Result<ExecutorResult, Error> {
+    fn execute_chunker(&self, op: FoldOp, expr: &Expr) -> Result<ExecutorResult, Error> {
         let iter_shape = self.execute_expr(expr)?.into_iter_shape()?;
         if iter_shape.len < 1 {
             return Ok(iter_shape.into());
@@ -719,7 +719,7 @@ impl<'a> Executor<'a> {
         }
     }
 
-    fn execute_expr(&mut self, node: &Expr) -> Result<ExecutorResult, Error> {
+    fn execute_expr(&self, node: &Expr) -> Result<ExecutorResult, Error> {
         match node {
             Expr::Atom(Atom::Rat(v)) => Ok(Chain::make_scalar(v.clone()).into()),
             Expr::Atom(Atom::Ref(s)) => {
