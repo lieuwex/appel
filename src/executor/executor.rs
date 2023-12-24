@@ -84,6 +84,13 @@ fn into_integer_error(iter_shape: IterShape) -> Result<Integer, Error> {
     Ok(n)
 }
 
+fn expect_function_expr(exec: &Executor, expr: &Expr) -> Result<Function, Error> {
+    match Value::try_from(exec.execute_expr(&expr)?) {
+        Ok(Value::Function(f)) => Ok(f),
+        _ => Err(Error::from("expected left hand to be a function")),
+    }
+}
+
 fn get_comp_op_fn(op: CompOp) -> fn(Ratio, Ratio) -> Ratio {
     macro_rules! op {
         ($op:tt) => {
@@ -638,11 +645,7 @@ impl<'a> Executor<'a> {
             FoldOp::BinOp(op) => apply!(|acc, item| call_binary(op, acc.into(), item.into())),
 
             FoldOp::Expr(expr) => {
-                let f = match Value::try_from(self.execute_expr(&expr)?) {
-                    Ok(Value::Function(f)) => f,
-                    _ => return Err(Error::from("expected left hand to be a function")),
-                };
-
+                let f = expect_function_expr(self, &expr)?;
                 apply!(|acc, item| {
                     let args = [acc, item];
                     let res = self.call_function(&f, args.into_iter())?;
@@ -709,10 +712,7 @@ impl<'a> Executor<'a> {
             }),
 
             FoldOp::Expr(expr) => {
-                let f = match Value::try_from(self.execute_expr(&expr)?) {
-                    Ok(Value::Function(f)) => f,
-                    _ => return Err(Error::from("expected left hand to be a function")),
-                };
+                let f = expect_function_expr(self, &expr)?;
                 apply!(f.params().len(), |args| self
                     .call_function(&f, args.into_iter()))
             }
