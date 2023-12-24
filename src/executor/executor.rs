@@ -350,13 +350,11 @@ fn call_binary(op: BinOp, a: Chain, b: Chain) -> Result<ExecutorResult, Error> {
         BinOp::Min => apply_ok!(|a: Ratio, b: Ratio| a.min(b)),
 
         BinOp::Pad => {
-            if a.len != 2 {
+            let Some((new_len, value)) = a.iterator.collect_tuple() else {
                 return Err(format!("expected 2 arguments on the left, got {}", a.len).into());
-            }
+            };
 
-            let mut it = a.iterator;
-            let new_len = it.next().unwrap()?;
-            let value = it.next().unwrap();
+            let new_len = new_len?;
 
             let (new_len, at_start) = if new_len < 0 {
                 (new_len.neg(), false)
@@ -704,10 +702,7 @@ impl<'a> Executor<'a> {
 
         match op {
             FoldOp::BinOp(op) => apply!(2, |args| {
-                let mut args = args.into_iter();
-                let a = args.next().unwrap();
-                let b = args.next().unwrap();
-
+                let (a, b) = args.into_iter().collect_tuple().unwrap();
                 call_binary(op, a.into(), b.into())
             }),
 
