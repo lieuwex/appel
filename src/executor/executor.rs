@@ -1013,4 +1013,14 @@ fn bitmask n = rev (2 ** ((iota n)-1))
 
         assert_eq!(res, vec![1, 2, 6, 24, 120]);
     }
+
+    #[test]
+    fn test_fold() {
+        let mut exec = Executor::new();
+
+        let res = eval!(exec, "*//iota 5");
+        let res = res.into_iter_shape().unwrap().into_scalar().unwrap();
+
+        assert_eq!(res, 120);
+    }
 }
