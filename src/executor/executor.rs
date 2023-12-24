@@ -997,6 +997,16 @@ fn bitmask n = rev (2 ** ((iota n)-1))
     }
 
     #[test]
+    fn test_hof_lambda_call() {
+        let mut exec = Executor::new();
+
+        let res = eval!(exec, r#"(\f -> f 1 2) (\a b -> a + b)"#);
+        let res = res.into_iter_shape().unwrap().into_scalar().unwrap();
+
+        assert_eq!(res, 3);
+    }
+
+    #[test]
     fn test_recursive_clusterfuck() {
         let mut exec = Executor::new();
 
