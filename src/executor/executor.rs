@@ -1,4 +1,5 @@
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::cmp::Reverse;
+use std::collections::{BinaryHeap, HashMap, HashSet, VecDeque};
 use std::convert::{TryFrom, TryInto};
 use std::iter;
 use std::ops::Neg;
@@ -771,17 +772,36 @@ impl<'a> Executor<'a> {
 
             Expr::Index(m, indices) => {
                 let indices = self.execute_expr(indices)?.into_iter_shape()?;
-
-                let m = Matrix::try_from(self.execute_expr(m)?)?;
-
-                let indices: Vec<usize> = indices
+                let mut outputs = vec![Rational::new(); indices.len]; // REVIEW
+                let mut indices: BinaryHeap<_> = indices
                     .iterator
                     .map(|v| to_usize_error(&v?))
-                    .collect::<Result<_, Error>>()?;
+                    .enumerate()
+                    .map(|(dst, src)| src.map(|src| Reverse((src, dst))))
+                    .collect::<Result<_, _>>()?;
 
-                match m.get_multiple(&indices) {
-                    None => Err(Error::from("out of bounds")),
-                    Some(i) => Ok(Matrix::make_vector(i).into()),
+                let m = self.execute_expr(m)?.into_iter_shape()?;
+
+                'outer: for (i, v) in m.iterator.enumerate() {
+                    'inner: loop {
+                        let Some(&Reverse((src, dst))) = indices.peek() else {
+                            // all indices have been found
+                            break 'outer;
+                        };
+
+                        if i < src {
+                            break 'inner;
+                        } else if i == src {
+                            outputs[dst] = v.clone()?;
+                            indices.pop();
+                        }
+                    }
+                }
+
+                if let Some(&Reverse((src, _))) = indices.peek() {
+                    Err(format!("index {} out of bounds", src).into())
+                } else {
+                    Ok(Matrix::make_vector(outputs).into())
                 }
             }
 
