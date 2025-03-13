@@ -262,40 +262,40 @@ fn call_binary(op: BinOp, a: Chain, b: Chain) -> Result<ExecutorResult, Error> {
             let b: Result<_, _> = b
                 .iterator
                 .map(|v| {
-                    v.map(|v| {
-                        let (numer, denom) = v.into_numer_denom();
-
-                        let numer = numer.to_string();
-                        let numer = BigInt::parse_bytes(numer.as_bytes(), 10).unwrap();
-
-                        let denom = denom.to_string();
-                        let denom = BigInt::parse_bytes(denom.as_bytes(), 10).unwrap();
-
-                        num_rational::BigRational::new_raw(numer, denom)
+                    v.and_then(|v| {
+                        v.into_integer()
+                            .ok_or(Error::from("rhs must only contain integers"))
                     })
                 })
                 .collect();
             let b: Vec<_> = b?;
 
+            // SAFETY 1: check that 2 ≤ radix ≤ 256
             let radix = a
-                .to_u32()
+                .to_i32()
                 .filter(|r| (2..=256).contains(r))
-                .ok_or(Error::from("radix must be greater than or equal to 2"))?;
+                .ok_or(Error::from("radix must be in interval [2, 256]"))?;
 
-            let sign = if b.iter().any(|b| b.to_integer().sign() == Sign::Minus) {
+            let sign = if b.iter().any(|b| b.signum() == -1) {
                 Sign::Minus
             } else {
                 Sign::Plus
             };
 
-            let bits: Option<Vec<u8>> = b.iter().map(|b| b.to_integer().to_u8()).collect();
-            let bits = bits.ok_or_else(|| Error::from("value too large"))?;
+            // SAFETY 2: check that 0 ≤ b < radix for every byte b
+            let bytes: Option<Vec<u8>> = b
+                .iter()
+                .map(|b| b.abs().to_i32())
+                .map(|b| b.filter(|b| (0..radix).contains(b)))
+                .map(|b| b.map(|b| b as u8))
+                .collect();
+            let bytes = bytes.ok_or_else(|| Error::from("value too large"))?;
 
-            let packed = BigInt::from_radix_be(sign, &bits, radix);
-            let int = packed.ok_or(Error::from("couldn't convert bits to int"))?;
-
-            let int = int.to_string();
-            let int = Integer::from_str_radix(&int, 10).unwrap();
+            let mut int = Integer::new();
+            // SAFETY: 1 and 2 are checked
+            unsafe {
+                int.assign_bytes_radix_unchecked(&bytes, radix, sign == Sign::Minus);
+            }
 
             Ok(Chain::make_scalar(Ratio::from(int)).into())
         }
