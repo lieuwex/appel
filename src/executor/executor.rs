@@ -783,6 +783,7 @@ impl<'a> Executor<'a> {
                 let m = self.execute_expr(m)?.into_iter_shape()?;
 
                 'outer: for (i, v) in m.iterator.enumerate() {
+                    let v = v?;
                     'inner: loop {
                         let Some(&Reverse((src, dst))) = indices.peek() else {
                             // all indices have been found
@@ -792,7 +793,7 @@ impl<'a> Executor<'a> {
                         if i < src {
                             break 'inner;
                         } else if i == src {
-                            outputs[dst] = v.clone()?;
+                            outputs[dst].assign(&v);
                             indices.pop();
                         }
                     }
