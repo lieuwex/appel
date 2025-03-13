@@ -15,10 +15,9 @@ clap = "2.33.0"
 dtoa = "1"
 
 rug = { version = "1.18", features = ["default", "num-traits"] }
+gmp-mpfr-sys = "*"
 num-traits = "*"
-num-bigint = "0.4"
-num-rational = "0.4"
 
 dyn-clonable = "0.9.0"
 
-itertools = "0.12"
+itertools = "0.13"

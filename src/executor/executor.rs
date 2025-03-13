@@ -1,6 +1,7 @@
 use std::cmp::Reverse;
 use std::collections::{BinaryHeap, HashMap, HashSet, VecDeque};
 use std::convert::{TryFrom, TryInto};
+use std::ffi::c_int;
 use std::iter;
 use std::ops::Neg;
 use std::time::Instant;
@@ -9,8 +10,8 @@ use crate::executor::chain::{Chain, Error, IterShape, ValueIter};
 use crate::parser;
 use crate::{ast::*, collect_point};
 
+use gmp_mpfr_sys::gmp::{bits_per_limb, mpn_get_str, size_t};
 use itertools::Itertools;
-use num_bigint::{BigInt, Sign};
 use num_traits::*;
 use rug::{Assign, Float, Integer, Rational};
 
@@ -229,32 +230,34 @@ fn call_binary(op: BinOp, a: Chain, b: Chain) -> Result<ExecutorResult, Error> {
 
         BinOp::Unpack => {
             let a = into_integer_error(a)?;
-
             let b = into_integer_error(b)?;
-            let b = b.to_string();
-            let b = BigInt::parse_bytes(b.as_bytes(), 10).unwrap();
 
             let radix = a
                 .to_u32()
                 .filter(|r| (2..=256).contains(r))
                 .ok_or(Error::from("radix must be greater than or equal to 2"))?;
 
-            let (sign, bits) = b.to_radix_be(radix);
+            let (buf, n) = {
+                let b = b.into_raw();
 
-            let len = bits.len();
-            let values = bits
-                .into_iter()
-                .map(|b| Ratio::from(b))
-                .map(move |b| {
-                    if sign == num_bigint::Sign::Minus {
-                        b.neg()
-                    } else {
-                        b
-                    }
-                })
-                .map(Result::Ok);
+                let bits = b.size as usize * unsafe { bits_per_limb as usize };
+                let cnt = ((bits as f64) * 2f64.log(radix as f64)).ceil();
 
-            Ok(Chain::make_vector(Box::new(values), len).into())
+                let mut buf = vec![0; cnt as usize];
+                let n = unsafe {
+                    mpn_get_str(
+                        buf.as_mut_ptr(),
+                        radix as c_int,
+                        b.d.as_ptr(),
+                        b.size as size_t,
+                    )
+                };
+
+                (buf, n)
+            };
+
+            let iter = buf.into_iter().take(n).map(Rational::from).map(Ok);
+            Ok(Chain::make_vector(Box::new(iter), n).into())
         }
         BinOp::Pack => {
             let a = into_integer_error(a)?;
@@ -276,11 +279,7 @@ fn call_binary(op: BinOp, a: Chain, b: Chain) -> Result<ExecutorResult, Error> {
                 .filter(|r| (2..=256).contains(r))
                 .ok_or(Error::from("radix must be in interval [2, 256]"))?;
 
-            let sign = if b.iter().any(|b| b.signum() == -1) {
-                Sign::Minus
-            } else {
-                Sign::Plus
-            };
+            let is_negative = b.iter().any(|b| b.signum() == -1);
 
             // SAFETY 2: check that 0 ≤ b < radix for every byte b
             let bytes: Option<Vec<u8>> = b
@@ -294,7 +293,7 @@ fn call_binary(op: BinOp, a: Chain, b: Chain) -> Result<ExecutorResult, Error> {
             let mut int = Integer::new();
             // SAFETY: 1 and 2 are checked
             unsafe {
-                int.assign_bytes_radix_unchecked(&bytes, radix, sign == Sign::Minus);
+                int.assign_bytes_radix_unchecked(&bytes, radix, is_negative);
             }
 
             Ok(Chain::make_scalar(Ratio::from(int)).into())
