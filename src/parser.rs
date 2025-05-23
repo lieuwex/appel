@@ -70,7 +70,7 @@ fn binary_op<'a>() -> Parser<'a, BinOp> {
 fn check_reserved(s: String) -> Result<String, String> {
     let reserved = [
         "drop", "rho", "unpack", "pack", "log", "iota", "abs", "rev", "in", "union", "mask", "max",
-        "min", "pad", "let",
+        "min", "pad", "let", "fn",
     ];
 
     if reserved.contains(&s.as_str()) {
