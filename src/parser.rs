@@ -403,7 +403,7 @@ fn p_expr_11<'a>() -> Parser<'a, Expr> {
 
 /// Map
 fn p_expr_12<'a>() -> Parser<'a, Expr> {
-    (p_foldlike(".")
+    (p_foldlike(". ")
         .map(|(op, expr)| Expr::Map(op, expr))
         .name("map"))
         | p_expr_11()
@@ -515,6 +515,14 @@ mod tests {
         assert!(is_ok_some!(parse("a b c")));
         assert!(is_ok_some!(parse("a 2 c")));
         assert!(is_ok_some!(parse("a (a b) c")));
+
+        assert_eq!(
+            parse(".1 .2"),
+            Ok(Some(Statement::Expr(Expr::Vector(vec![
+                Expr::Atom(Atom::Rat(Ratio::from((1, 10)))),
+                Expr::Atom(Atom::Rat(Ratio::from((1, 5))))
+            ]))))
+        );
     }
 
     #[test]

@@ -143,7 +143,7 @@ impl fmt::Display for BinOp {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum FoldOp {
     BinOp(BinOp),
     Expr(Box<Expr>),
@@ -158,13 +158,13 @@ impl fmt::Display for FoldOp {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Atom {
     Rat(Ratio),
     Ref(String),
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Expr {
     Atom(Atom),
     Vector(Vec<Expr>),
@@ -220,7 +220,7 @@ impl fmt::Display for Expr {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Statement {
     Expr(Expr),
     Assign(String, Expr),
