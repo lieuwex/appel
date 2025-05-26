@@ -100,6 +100,9 @@ pub enum BinOp {
     Pow,
     Concat,
 
+    LeftShift,
+    RightShift,
+
     CompOp(CompOp),
 
     Log,
@@ -125,6 +128,9 @@ impl fmt::Display for BinOp {
             BinOp::Mod => write!(f, "%"),
             BinOp::Pow => write!(f, "**"),
             BinOp::Concat => write!(f, ","),
+
+            BinOp::LeftShift => write!(f, "<<"),
+            BinOp::RightShift => write!(f, ">>"),
 
             BinOp::CompOp(x) => write!(f, "{}", x),
 

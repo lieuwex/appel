@@ -180,6 +180,20 @@ fn call_binary(op: BinOp, a: Chain, b: Chain) -> Result<ExecutorResult, Error> {
         BinOp::Mod => apply!(|a: Ratio, b: Ratio| safe_div!(a, &b).map(|v| v.rem_trunc() * b)),
         BinOp::Pow => apply!(pow),
         BinOp::Log => apply!(log),
+        s @ (BinOp::LeftShift | BinOp::RightShift) => {
+            apply!(move |a: Rational, b: Rational| {
+                let a = a
+                    .into_integer()
+                    .ok_or_else(|| Error::from("value must be an integer"))?;
+                let b = to_usize_error(&b)?;
+
+                Ok(Ratio::from(match s {
+                    BinOp::LeftShift => a << b,
+                    BinOp::RightShift => a >> b,
+                    _ => unreachable!(),
+                }))
+            })
+        }
         BinOp::CompOp(x) => apply_ok!(get_comp_op_fn(x)),
 
         BinOp::Concat => {

@@ -64,6 +64,8 @@ fn binary_op<'a>() -> Parser<'a, BinOp> {
         | operator("%").map(|_| BinOp::Mod)
         | operator("+").map(|_| BinOp::Add)
         | operator("-").map(|_| BinOp::Sub)
+        | operator("<<").map(|_| BinOp::LeftShift)
+        | operator(">>").map(|_| BinOp::RightShift)
         | comp_op().map(BinOp::CompOp)
 }
 
@@ -341,10 +343,12 @@ fn p_expr_7<'a>() -> Parser<'a, Expr> {
         .name("special unary")
 }
 
-/// Sum (+, -) of products
+/// Sum (+, -) of products and bit shifts
 fn p_expr_8<'a>() -> Parser<'a, Expr> {
-    let op_p =
-        symbol_both(sym('+')).map(|_| BinOp::Add) | symbol_both(sym('-')).map(|_| BinOp::Sub);
+    let op_p = symbol_both(sym('+')).map(|_| BinOp::Add)
+        | symbol_both(sym('-')).map(|_| BinOp::Sub)
+        | symbol_both(operator("<<")).map(|_| BinOp::LeftShift)
+        | symbol_both(operator(">>")).map(|_| BinOp::RightShift);
 
     left_recurse(p_expr_7, op_p, p_expr_7, "sum", |e1, op, e2| {
         Expr::Binary(Box::new(e1), op, Box::new(e2))
@@ -540,6 +544,9 @@ mod tests {
         assert!(is_ok_some!(parse("a+b")));
         assert!(is_ok_some!(parse("a + b")));
         assert!(is_ok_some!(parse("a ** b + c")));
+
+        assert!(is_ok_some!(parse("a << b")));
+        assert!(is_ok_some!(parse("a >> b")));
     }
 
     #[test]
