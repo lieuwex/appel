@@ -510,18 +510,18 @@ impl<'a> Executor<'a> {
                     return Err(Error::from("value must be greater than 0"));
                 }
 
-                let mut rng = rand::thread_rng();
+                let mut rng = rand::rng();
                 let upper: u128 = x
                     .into_integer()
                     .ok_or_else(|| Error::from("value must be an integer"))?
                     .to_u128()
                     .ok_or_else(|| Error::from("value too large to be rolled"))?;
-                let val: u128 = rng.gen_range(0..=upper);
+                let val: u128 = rng.random_range(0..=upper);
                 Ratio::from_u128(val).ok_or_else(|| Error::from("couldn't convert u64 to ratio"))
             }),
             UnOp::RollFloat => for_all!(|x: Ratio| {
-                let mut rng = rand::thread_rng();
-                let val: f64 = rng.gen_range(0.0..=1.0);
+                let mut rng = rand::rng();
+                let val: f64 = rng.random_range(0.0..=1.0);
                 Ratio::from_f64(val)
                     .map(|val| x * val)
                     .ok_or_else(|| Error::from("couldn't convert f64 to ratio"))

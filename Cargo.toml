@@ -10,8 +10,8 @@ lto = true
 
 [dependencies]
 pom = "^3.1"
-rand = "0.8"
-clap = "2.33.0"
+rand = "0.9"
+clap = "4.5"
 dtoa = "1"
 
 rug = { version = "1.18", features = ["default", "num-traits"] }
@@ -20,4 +20,4 @@ num-traits = "*"
 
 dyn-clonable = "0.9.0"
 
-itertools = "0.13"
+itertools = "0.14"

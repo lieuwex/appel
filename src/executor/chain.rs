@@ -1,4 +1,4 @@
-use std::{convert::TryFrom, iter};
+use std::convert::TryFrom;
 
 use crate::ast::Ratio;
 use crate::collect_point;

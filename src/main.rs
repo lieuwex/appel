@@ -6,7 +6,7 @@ mod parser;
 
 use std::fs;
 
-use clap::{App, Arg};
+use clap::{Arg, Command};
 use executor::chain::Error;
 
 use crate::executor::matrix::Formatter;
@@ -64,35 +64,35 @@ impl State {
 }
 
 fn main() -> Result<(), String> {
-    let matches = App::new("Appel")
+    let matches = Command::new("Appel")
         .version("alpha-1")
         .author("Lieuwe Rooijakkers <lieuwerooijakkers@gmail.com>")
         .about("A sane arbitrary precision rational calculator inspired by APL")
         .arg(
-            Arg::with_name("format")
-                .short("f")
+            Arg::new("format")
+                .short('f')
                 .long("format")
                 .value_name("FORMAT")
                 .help("Set the number output format"),
         )
         .arg(
-            Arg::with_name("pre-exec")
+            Arg::new("pre-exec")
                 .long("pre")
                 .value_name("PRE_EXEC")
                 .help("A script to execute before showing prompt, all output except for errors are ignored. Useful for a custom prelude."),
         )
         .get_matches();
 
-    let format = matches.value_of("format").unwrap_or("ratio");
-    let formatter = match format {
-        "rat" | "ratio" => Ok(Formatter::Ratio),
-        "f" | "float" => Ok(Formatter::Float(None)),
-        s => s.parse::<usize>().map(|n| Formatter::Float(Some(n))),
+    let format = matches.get_one::<String>("format");
+    let formatter = match format.map(String::as_str) {
+        None | Some("rat" | "ratio") => Ok(Formatter::Ratio),
+        Some("f" | "float") => Ok(Formatter::Float(None)),
+        Some(s) => s.parse::<usize>().map(|n| Formatter::Float(Some(n))),
     }
     .map_err(|e| e.to_string())?;
 
-    let scripts: Vec<(&str, String)> = matches
-        .values_of("pre-exec")
+    let scripts: Vec<(&String, String)> = matches
+        .get_many::<String>("pre-exec")
         .unwrap_or_default()
         .map(|fname| fs::read_to_string(fname).map(|s| (fname, s)))
         .collect::<Result<_, _>>()
