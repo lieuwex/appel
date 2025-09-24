@@ -81,6 +81,12 @@ fn main() -> Result<(), String> {
                 .value_name("PRE_EXEC")
                 .help("A script to execute before showing prompt, all output except for errors are ignored. Useful for a custom prelude."),
         )
+        .arg(
+            Arg::new("expression")
+                .required(false)
+                .value_name("EXPRESSION")
+                .help("If given, run the given expression and exit immediately."),
+        )
         .get_matches();
 
     let format = matches.get_one::<String>("format");
@@ -114,6 +120,20 @@ fn main() -> Result<(), String> {
                 )
             }
         }
+    }
+
+    if let Some(expr) = matches.get_one::<String>("expression") {
+        let code = match state.exec_line(expr) {
+            Err(e) => {
+                eprintln!("{}", e);
+                1
+            }
+            Ok(r) => {
+                println!("{}", r);
+                0
+            }
+        };
+        std::process::exit(code)
     }
 
     let lines = std::io::stdin().lines();
