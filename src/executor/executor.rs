@@ -701,8 +701,9 @@ impl<'a> Executor<'a> {
                     Ok(Chain::try_from(res)?.into_iter_shape()?.iterator)
                 })
                 .flatten_ok()
-                .flatten_ok()
+                .map(|res| Ok(res??))
                 .collect();
+
             collect_point!();
 
             let m = Matrix::make_vector(chunks?);
@@ -1066,5 +1067,15 @@ fn bitmask n = rev (2 ** ((iota n)-1))
         let res = res.into_iter_shape().unwrap().into_scalar().unwrap();
 
         assert_eq!(res, 120);
+    }
+
+    #[test]
+    fn test_chunker_error_propagation() {
+        let mut exec = Executor::new();
+
+        eval!(exec, "fn f a = a log a");
+
+        let s = parser::parse("f . (iota 1)").unwrap().unwrap();
+        assert!(exec.execute(s, false).is_err());
     }
 }
