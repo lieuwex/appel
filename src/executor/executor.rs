@@ -58,7 +58,7 @@ fn log(base: Ratio, n: Ratio) -> Result<Ratio, Error> {
 
 pub struct Executor<'a> {
     previous: Option<&'a Executor<'a>>,
-    variables: HashMap<String, Value>,
+    variables: HashMap<String, Chain>,
 }
 
 fn expect_scalar(v: ExecutorResult) -> Result<Ratio, Error> {
@@ -394,7 +394,7 @@ fn call_binary(op: BinOp, a: Chain, b: Chain) -> Result<ExecutorResult, Error> {
 }
 
 impl<'a> Executor<'a> {
-    fn get_variable(&self, name: &str) -> Option<&Value> {
+    fn get_variable(&self, name: &str) -> Option<&Chain> {
         match (self.variables.get(name), &self.previous) {
             (Some(v), _) => Some(v),
             (None, Some(prev)) => prev.get_variable(name),
@@ -416,7 +416,8 @@ impl<'a> Executor<'a> {
                         let mut r = Ratio::new();
                         r.assign_f64($f).unwrap();
                         r
-                    }),
+                    })
+                    .into(),
                 );
             };
         }
@@ -458,7 +459,7 @@ impl<'a> Executor<'a> {
                 .params()
                 .iter()
                 .zip(args)
-                .map(|(param, value)| (param.to_string(), value))
+                .map(|(param, value)| (param.to_string(), value.into()))
                 .collect(),
         };
 
@@ -681,8 +682,7 @@ impl<'a> Executor<'a> {
             if iter_shape.len % chunk_size != 0 {
                 return Err(Error::from(format!(
                     "left hand sides expects {} arguments, but the right hand side length ({}) is not divisible by that",
-                    chunk_size,
-                    iter_shape.len,
+                    chunk_size, iter_shape.len,
                 )));
             }
 
@@ -840,11 +840,12 @@ impl<'a> Executor<'a> {
     }
 
     pub fn execute(&mut self, node: Statement, remember: bool) -> Result<ExecutorResult, Error> {
-        let is_conflict = |old: Option<&Value>, new_is_fun: bool| match old {
+        let is_conflict = |old: Option<&Chain>, new_is_fun: bool| match old {
             None => false,
-            Some(Value::Matrix(_)) => new_is_fun,
-            Some(Value::Scalar(_)) => new_is_fun,
-            Some(Value::Function(_)) => !new_is_fun,
+            Some(Chain::Iterator(_)) => new_is_fun,
+            Some(Chain::Value(Value::Matrix(_))) => new_is_fun,
+            Some(Chain::Value(Value::Scalar(_))) => new_is_fun,
+            Some(Chain::Value(Value::Function(_))) => !new_is_fun,
         };
 
         macro_rules! err_var_exists {
@@ -865,7 +866,7 @@ impl<'a> Executor<'a> {
                 err_var_exists!(var, matches!(val, Expr::Lambda(_, _)));
                 let res = self.execute_expr(&val)?;
                 let val: Value = res.clone().try_into()?;
-                self.variables.insert(var, val);
+                self.variables.insert(var, val.into());
                 Ok(res)
             }
 
@@ -876,7 +877,8 @@ impl<'a> Executor<'a> {
                     params,
                     expr,
                 };
-                self.variables.insert(name, Value::Function(f.clone()));
+                self.variables
+                    .insert(name, Value::Function(f.clone()).into());
                 Ok(f.into())
             }
 
@@ -947,9 +949,11 @@ impl<'a> Executor<'a> {
         };
 
         if remember {
-            let val = res.clone().and_then(Value::try_from);
-            if let Ok(val) = val {
-                self.variables.insert(String::from("_"), val);
+            let val = res.clone();
+            if let Ok(val) = val
+                && let ExecutorResult::Chain(c) = val
+            {
+                self.variables.insert(String::from("_"), c);
             }
         }
 
