@@ -966,10 +966,14 @@ mod tests {
     use super::*;
 
     macro_rules! eval {
-        ($exec:expr, $line:expr) => {{
+        ($exec:expr, $line:expr, $remember:expr) => {{
             let s = parser::parse($line).unwrap().unwrap();
-            $exec.execute(s, false).unwrap()
+            $exec.execute(s, $remember).unwrap()
         }};
+
+        ($exec:expr, $line:expr) => {
+            eval!($exec, $line, false)
+        };
     }
 
     #[test]
@@ -1081,5 +1085,40 @@ fn bitmask n = rev (2 ** ((iota n)-1))
 
         let s = parser::parse("f . (iota 1)").unwrap().unwrap();
         assert!(exec.execute(s, false).is_err());
+    }
+
+    #[test]
+    fn test_variables() {
+        let mut exec = Executor::new();
+
+        eval!(exec, "a = 1", true);
+        eval!(exec, "b = 2", true);
+
+        let res = eval!(exec, "a + b");
+        let res = res.into_iter_shape().unwrap().into_scalar().unwrap();
+
+        assert_eq!(res, 3);
+    }
+
+    #[test]
+    fn test_last_variable() {
+        let mut exec = Executor::new();
+
+        eval!(exec, "5", true);
+
+        let res = eval!(exec, "_");
+        let res = res.into_iter_shape().unwrap().into_scalar().unwrap();
+
+        assert_eq!(res, 5);
+    }
+
+    #[test]
+    fn test_let() {
+        let mut exec = Executor::new();
+
+        let res = eval!(exec, "let a = 5 in let b = 10 in a + b");
+        let res = res.into_iter_shape().unwrap().into_scalar().unwrap();
+
+        assert_eq!(res, 15);
     }
 }
