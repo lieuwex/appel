@@ -1,6 +1,8 @@
+use std::collections::HashMap;
 use std::fmt;
 
 use crate::ast::*;
+use crate::executor::chain::Chain;
 
 #[derive(Clone, Debug)]
 pub enum Function {
@@ -12,6 +14,7 @@ pub enum Function {
     Lambda {
         params: Vec<String>,
         expr: Expr,
+        env: HashMap<String, Chain>,
     },
 }
 
@@ -42,7 +45,7 @@ impl fmt::Display for Function {
 
                 write!(f, " = {}", expr)
             }
-            Function::Lambda { params, expr } => {
+            Function::Lambda { params, expr, .. } => {
                 write!(f, "\\")?;
                 for param in params {
                     write!(f, "{} ", param)?;

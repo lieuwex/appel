@@ -402,6 +402,17 @@ impl<'a> Executor<'a> {
         }
     }
 
+    fn get_all_variables(&self) -> HashMap<String, Chain> {
+        let mut vars = match &self.previous {
+            None => HashMap::new(),
+            Some(prev) => prev.get_all_variables(),
+        };
+        for (k, v) in &self.variables {
+            vars.insert(k.clone(), v.clone());
+        }
+        vars
+    }
+
     pub fn new() -> Self {
         let mut res = Self {
             previous: None,
@@ -453,14 +464,21 @@ impl<'a> Executor<'a> {
             );
         }
 
+        let mut variables = match f {
+            Function::Lambda { env, .. } => env.clone(),
+            _ => HashMap::new(),
+        };
+
+        for (param, value) in f.params().iter().zip(args) {
+            variables.insert(param.to_string(), value.into());
+        }
+
         let ctx = Executor {
-            previous: Some(self),
-            variables: f
-                .params()
-                .iter()
-                .zip(args)
-                .map(|(param, value)| (param.to_string(), value.into()))
-                .collect(),
+            previous: match f {
+                Function::Lambda { .. } => None,
+                _ => Some(self),
+            },
+            variables,
         };
 
         ctx.execute_expr(f.expr())
@@ -826,6 +844,7 @@ impl<'a> Executor<'a> {
                     &Function::Lambda {
                         params: vec![name.clone()],
                         expr: *body.clone(),
+                        env: self.get_all_variables(),
                     },
                     iter::once(expr),
                 )
@@ -834,6 +853,7 @@ impl<'a> Executor<'a> {
             Expr::Lambda(params, body) => Ok(Value::Function(Function::Lambda {
                 params: params.clone(),
                 expr: (**body).clone(),
+                env: self.get_all_variables(),
             })
             .into()),
         }
@@ -1044,6 +1064,17 @@ fn bitmask n = rev (2 ** ((iota n)-1))
         let mut exec = Executor::new();
 
         let res = eval!(exec, r#"(\f -> f 1 2) (\a b -> a + b)"#);
+        let res = res.into_iter_shape().unwrap().into_scalar().unwrap();
+
+        assert_eq!(res, 3);
+    }
+
+    #[test]
+    fn test_curried_function() {
+        let mut exec = Executor::new();
+
+        eval!(exec, "f = (\\a -> (\\b -> a + b))");
+        let res = eval!(exec, "(f 1) 2");
         let res = res.into_iter_shape().unwrap().into_scalar().unwrap();
 
         assert_eq!(res, 3);

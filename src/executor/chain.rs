@@ -77,7 +77,7 @@ impl From<IterShape> for ExecutorResult {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum Chain {
     Value(Value),
     Iterator(IterShape),
