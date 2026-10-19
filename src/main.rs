@@ -6,6 +6,7 @@ mod parser;
 mod units;
 
 use std::fs;
+use std::io::IsTerminal;
 
 use clap::{Arg, Command};
 use executor::chain::Error;
@@ -61,6 +62,19 @@ impl State {
             }
         };
         res.map(|x| if silent { String::new() } else { x })
+    }
+
+    fn print_line(&mut self, line: &str) {
+        match self.exec_line(line) {
+            Err(e) => eprintln!("{}\n", e),
+            Ok(r) => {
+                if r.is_empty() {
+                    println!()
+                } else {
+                    println!("{}\n", r)
+                }
+            }
+        }
     }
 }
 
@@ -137,24 +151,50 @@ fn main() -> Result<(), String> {
         std::process::exit(code)
     }
 
+    if std::io::stdin().is_terminal() {
+        return repl(&mut state);
+    }
+
     let lines = std::io::stdin().lines();
     for line in lines {
         let line = match line {
             Err(e) => return Err(format!("error reading from stdin: {}", e)),
             Ok(l) => l,
         };
-
-        match state.exec_line(&line) {
-            Err(e) => eprintln!("{}\n", e),
-            Ok(r) => {
-                if r.is_empty() {
-                    println!()
-                } else {
-                    println!("{}\n", r)
-                }
-            }
-        }
+        state.print_line(&line);
     }
 
     Ok(())
+}
+
+/// Interactive line editing with history, kept in `~/.appel_history`.
+fn repl(state: &mut State) -> Result<(), String> {
+    use rustyline::error::ReadlineError;
+
+    let config = rustyline::Config::builder()
+        .max_history_size(10_000)
+        .map_err(|e| e.to_string())?
+        .auto_add_history(true)
+        .build();
+    let mut rl = rustyline::DefaultEditor::with_config(config).map_err(|e| e.to_string())?;
+    let history =
+        std::env::var_os("HOME").map(|home| std::path::Path::new(&home).join(".appel_history"));
+    if let Some(history) = &history {
+        // The file doesn't exist yet on first use.
+        let _ = rl.load_history(history);
+    }
+
+    loop {
+        match rl.readline("> ") {
+            Ok(line) => {
+                state.print_line(&line);
+                if let Some(history) = &history {
+                    let _ = rl.append_history(history);
+                }
+            }
+            Err(ReadlineError::Interrupted) => continue,
+            Err(ReadlineError::Eof) => return Ok(()),
+            Err(e) => return Err(format!("error reading line: {}", e)),
+        }
+    }
 }
