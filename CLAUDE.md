@@ -42,8 +42,8 @@ To compare with an older version, build that version and pass it with `-b`.
 - Vectors are flat: no nesting. Lambdas capture their environment by copying all variables
   (this `HashMap` clone dominates lambda-heavy benchmarks).
 - Earlier results, like `%` in Mathematica: `_` is the last result, `__` the one before, `_5`
-  the fifth (from 1). Every line that gives a value counts, assignments too; errors and `)n`
-  don't. These are `TokenKind::Out` / `Atom::Out`, not names, so they can't be assigned.
+  the fifth (from 1). Every line that gives a value counts, assignments too; errors, `)n` and
+  lines from a `--pre` prelude don't. These are `TokenKind::Out` / `Atom::Out`, not names, so they can't be assigned.
   Lambdas and `let` copy the results they use into their environment when created; named
   functions look them up when called. Other names starting with `_` (`_a`, `_5a`) are ordinary
   variables. The interactive prompt shows the number the next result gets: `[5]:`.

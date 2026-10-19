@@ -20,7 +20,8 @@ struct State {
 }
 
 impl State {
-    fn exec_line(&mut self, line: &str) -> Result<String, Error> {
+    /// `remember`: whether the result counts for `_`, `__` and `_5`.
+    fn exec_line(&mut self, line: &str, remember: bool) -> Result<String, Error> {
         let (line, silent) = line
             .strip_prefix('#')
             .map(|line| (line, true))
@@ -36,7 +37,7 @@ impl State {
             println!("parsed as: {:?}", parsed);
         }
 
-        let res = match self.exec.execute(parsed, true) {
+        let res = match self.exec.execute(parsed, remember) {
             Err(e) => Err(format!("error while executing: {}", e).into()),
             Ok(ExecutorResult::None) => Ok(String::new()),
             Ok(ExecutorResult::Chain(c)) => c.format(self.formatter),
@@ -65,7 +66,7 @@ impl State {
     }
 
     fn print_line(&mut self, line: &str) {
-        match self.exec_line(line) {
+        match self.exec_line(line, true) {
             Err(e) => eprintln!("{}\n", e),
             Ok(r) => {
                 if r.is_empty() {
@@ -125,8 +126,9 @@ fn main() -> Result<(), String> {
     };
 
     for (fname, script) in scripts.into_iter() {
+        // The prelude's results don't count as history.
         for (i, line) in script.lines().enumerate() {
-            if let Err(e) = state.exec_line(line) {
+            if let Err(e) = state.exec_line(line, false) {
                 eprintln!(
                     "error while executing script {} line {}: {}\n",
                     fname,
@@ -138,7 +140,7 @@ fn main() -> Result<(), String> {
     }
 
     if let Some(expr) = matches.get_one::<String>("expression") {
-        let code = match state.exec_line(expr) {
+        let code = match state.exec_line(expr, true) {
             Err(e) => {
                 eprintln!("{}", e);
                 1
