@@ -170,6 +170,25 @@ impl fmt::Display for FoldOp {
 pub enum Atom {
     Rat(Ratio),
     Ref(String),
+    Out(Out),
+}
+
+/// A reference to an earlier result, like `%` in Mathematica.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Out {
+    /// `_` is the last result, `__` the one before it, and so on.
+    Back(usize),
+    /// `_5` is the fifth result, counting from 1.
+    Nth(usize),
+}
+
+impl fmt::Display for Out {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Out::Back(n) => write!(f, "{}", "_".repeat(*n)),
+            Out::Nth(n) => write!(f, "_{}", n),
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -193,6 +212,7 @@ impl fmt::Display for Expr {
         let (s, paren) = match self {
             Expr::Atom(Atom::Rat(v)) => (format!("{}", v), false),
             Expr::Atom(Atom::Ref(v)) => (v.to_string(), false),
+            Expr::Atom(Atom::Out(o)) => (o.to_string(), false),
 
             Expr::Vector(exprs) => (
                 exprs

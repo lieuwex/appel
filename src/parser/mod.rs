@@ -250,7 +250,7 @@ impl Parser {
         }
 
         let after_primary = match self.peek().kind {
-            TokenKind::Number(_) | TokenKind::Ident(_) => 1,
+            TokenKind::Number(_) | TokenKind::Ident(_) | TokenKind::Out(_) => 1,
             TokenKind::Symbol("(") => {
                 let mut depth = 0;
                 let mut offset = 0;
@@ -358,7 +358,10 @@ impl Parser {
         }
 
         match token.kind {
-            TokenKind::Number(_) | TokenKind::Ident(_) | TokenKind::Symbol("(") => true,
+            TokenKind::Number(_)
+            | TokenKind::Ident(_)
+            | TokenKind::Out(_)
+            | TokenKind::Symbol("(") => true,
             // `1 -2` is a vector, `1 - 2` is not
             TokenKind::Symbol("+" | "-") => !self.peek_at(1).space_before,
             _ => lookup(TIGHT_UNARY, token).is_some(),
@@ -424,6 +427,11 @@ impl Parser {
                 Ok(Expr::Atom(Atom::Rat(n)))
             }
             TokenKind::Ident(_) => Ok(Expr::Atom(Atom::Ref(self.ident()?))),
+            TokenKind::Out(o) => {
+                let o = *o;
+                self.advance();
+                Ok(Expr::Atom(Atom::Out(o)))
+            }
             TokenKind::Symbol("(") => {
                 self.advance();
                 let expr = self.expr()?;
@@ -528,6 +536,10 @@ mod tests {
 
         assert!(is_ok_some!(parse("kaas1 = a")));
         assert!(!is_ok_some!(parse("iota = a")));
+        assert!(!is_ok_some!(parse("_ = a")));
+        assert!(!is_ok_some!(parse("_5 = a")));
+        assert!(!is_ok_some!(parse(r"\_ -> 1")));
+        assert_eq!(show("_ + __ _3"), "(_ + (__ _3))");
         assert_eq!(show("single"), "single");
         assert_eq!(show("iotax"), "iotax");
     }

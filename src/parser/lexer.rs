@@ -3,7 +3,7 @@ use std::fmt;
 use rug::{Integer, ops::Pow};
 
 use super::ParseError;
-use crate::ast::Ratio;
+use crate::ast::{Out, Ratio};
 use crate::units::{Unit, lex_unit};
 
 /// Every word that has a meaning of its own, and therefore can't be used as a variable name.
@@ -23,6 +23,7 @@ const SYMBOLS: &[&str] = &[
 pub enum TokenKind {
     Number(Ratio),
     Ident(String),
+    Out(Out),
     Keyword(&'static str),
     Symbol(&'static str),
     Unit(Unit),
@@ -44,6 +45,7 @@ impl fmt::Display for TokenKind {
         match self {
             TokenKind::Number(n) => write!(f, "number `{}`", n),
             TokenKind::Ident(s) => write!(f, "`{}`", s),
+            TokenKind::Out(o) => write!(f, "`{}`", o),
             TokenKind::Keyword(s) | TokenKind::Symbol(s) => write!(f, "`{}`", s),
             TokenKind::Unit(u) => write!(f, "unit `{}`", u),
             TokenKind::End => write!(f, "end of input"),
@@ -123,9 +125,13 @@ pub fn tokenize(source: &str) -> Result<Vec<Token>, ParseError> {
                 .count();
             let word: String = chars[i..i + len].iter().collect();
             i += len;
-            match KEYWORDS.iter().find(|k| **k == word) {
-                Some(k) => TokenKind::Keyword(k),
-                None => TokenKind::Ident(word),
+            if let Some(out) = lex_out(&word).map_err(|msg| ParseError::new(pos, msg))? {
+                TokenKind::Out(out)
+            } else {
+                match KEYWORDS.iter().find(|k| **k == word) {
+                    Some(k) => TokenKind::Keyword(k),
+                    None => TokenKind::Ident(word),
+                }
             }
         } else {
             let sym = SYMBOLS
@@ -141,6 +147,23 @@ pub fn tokenize(source: &str) -> Result<Vec<Token>, ParseError> {
             pos,
             space_before,
         });
+    }
+}
+
+/// `_`, `__`, ... and `_5` refer to earlier results; other words starting with `_` are names.
+fn lex_out(word: &str) -> Result<Option<Out>, String> {
+    let rest = &word[1..];
+    if !word.starts_with('_') {
+        Ok(None)
+    } else if rest.chars().all(|c| c == '_') {
+        Ok(Some(Out::Back(word.len())))
+    } else if rest.chars().all(|c| c.is_ascii_digit()) {
+        let n = rest
+            .parse()
+            .map_err(|_| String::from("result number too large"))?;
+        Ok(Some(Out::Nth(n)))
+    } else {
+        Ok(None)
     }
 }
 
@@ -239,6 +262,17 @@ mod tests {
         assert_eq!(kinds("single")[0], TokenKind::Ident(String::from("single")));
         assert_eq!(kinds("iotax")[0], TokenKind::Ident(String::from("iotax")));
         assert_eq!(kinds("iota")[0], TokenKind::Keyword("iota"));
+    }
+
+    #[test]
+    fn test_out() {
+        assert_eq!(kinds("_")[0], TokenKind::Out(Out::Back(1)));
+        assert_eq!(kinds("___")[0], TokenKind::Out(Out::Back(3)));
+        assert_eq!(kinds("_12")[0], TokenKind::Out(Out::Nth(12)));
+        assert_eq!(kinds("_a")[0], TokenKind::Ident(String::from("_a")));
+        assert_eq!(kinds("_5a")[0], TokenKind::Ident(String::from("_5a")));
+        assert_eq!(kinds("__a")[0], TokenKind::Ident(String::from("__a")));
+        assert!(tokenize("_99999999999999999999999").is_err());
     }
 
     #[test]

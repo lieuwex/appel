@@ -60,6 +60,30 @@ fn log(base: Ratio, n: Ratio) -> Result<Ratio, Error> {
 pub struct Executor<'a> {
     previous: Option<&'a Executor<'a>>,
     variables: HashMap<String, Chain>,
+    /// Earlier results for `_`, `__` and `_5`. Only the outermost executor has any.
+    history: Vec<Chain>,
+}
+
+/// Call `f` on every `_`, `__` or `_5` in `expr`.
+fn for_each_out(expr: &Expr, f: &mut impl FnMut(Out)) {
+    match expr {
+        Expr::Atom(Atom::Out(o)) => f(*o),
+        Expr::Atom(_) => {}
+        Expr::Vector(v) => v.iter().for_each(|e| for_each_out(e, f)),
+        Expr::Unary(_, e) | Expr::Lambda(_, e) | Expr::WithUnit(e, _) | Expr::Convert(e, _) => {
+            for_each_out(e, f)
+        }
+        Expr::Binary(a, _, b) | Expr::Index(a, b) | Expr::Let(_, a, b) => {
+            for_each_out(a, f);
+            for_each_out(b, f);
+        }
+        Expr::Fold(op, e) | Expr::Scan(op, e) | Expr::Map(op, e) => {
+            if let FoldOp::Expr(op) = op {
+                for_each_out(op, f);
+            }
+            for_each_out(e, f);
+        }
+    }
 }
 
 fn to_usize_error(rat: &Ratio) -> Result<usize, Error> {
@@ -456,6 +480,44 @@ impl<'a> Executor<'a> {
         }
     }
 
+    fn get_out(&self, out: Out) -> Result<Chain, Error> {
+        // A lambda stores the results it uses in its environment, under the name `_5` etc.
+        if let Some(c) = self.get_variable(&out.to_string()) {
+            return Ok(c.clone());
+        }
+
+        let mut root = self;
+        while let Some(prev) = root.previous {
+            root = prev;
+        }
+        let history = &root.history;
+        let index = match out {
+            Out::Back(n) => history.len().checked_sub(n),
+            Out::Nth(n) => n.checked_sub(1),
+        };
+        index
+            .and_then(|i| history.get(i))
+            .cloned()
+            .ok_or_else(|| match history.len() {
+                0 => format!("{} not found, there are no results yet", out).into(),
+                1 => format!("{} not found, there is only 1 result", out).into(),
+                n => format!("{} not found, there are only {} results", out, n).into(),
+            })
+    }
+
+    /// The environment for a lambda with this body: all variables, plus the earlier results it
+    /// refers to, since it can't see the history when it is called.
+    fn capture_env(&self, body: &Expr) -> HashMap<String, Chain> {
+        let mut env = self.get_all_variables();
+        for_each_out(body, &mut |out| {
+            // A missing result is reported when the lambda is called.
+            if let Ok(c) = self.get_out(out) {
+                env.insert(out.to_string(), c);
+            }
+        });
+        env
+    }
+
     fn get_all_variables(&self) -> HashMap<String, Chain> {
         let mut vars = match &self.previous {
             None => HashMap::new(),
@@ -471,6 +533,7 @@ impl<'a> Executor<'a> {
         let mut res = Self {
             previous: None,
             variables: HashMap::new(),
+            history: Vec::new(),
         };
 
         macro_rules! add_float {
@@ -533,6 +596,7 @@ impl<'a> Executor<'a> {
                 _ => Some(self),
             },
             variables,
+            history: Vec::new(),
         };
 
         ctx.execute_expr(f.expr())
@@ -850,6 +914,7 @@ impl<'a> Executor<'a> {
 
                 Ok(var.into())
             }
+            Expr::Atom(Atom::Out(out)) => Ok(self.get_out(*out)?.into()),
 
             Expr::Vector(v) => {
                 let expressions: Vec<_> = v
@@ -953,7 +1018,7 @@ impl<'a> Executor<'a> {
                     &Function::Lambda {
                         params: vec![name.clone()],
                         expr: *body.clone(),
-                        env: self.get_all_variables(),
+                        env: self.capture_env(body),
                     },
                     iter::once(expr),
                 )
@@ -962,7 +1027,7 @@ impl<'a> Executor<'a> {
             Expr::Lambda(params, body) => Ok(Value::Function(Function::Lambda {
                 params: params.clone(),
                 expr: (**body).clone(),
-                env: self.get_all_variables(),
+                env: self.capture_env(body),
             })
             .into()),
 
@@ -1110,7 +1175,7 @@ impl<'a> Executor<'a> {
             if let Ok(val) = val
                 && let ExecutorResult::Chain(c) = val
             {
-                self.variables.insert(String::from("_"), c);
+                self.history.push(c);
             }
         }
 
@@ -1279,6 +1344,42 @@ fn bitmask n = rev (2 ** ((iota n)-1))
         let res = res.into_iter_shape().unwrap().into_scalar().unwrap();
 
         assert_eq!(res, 5);
+    }
+
+    #[test]
+    fn test_out() {
+        let mut exec = Executor::new();
+        eval!(exec, "10", true);
+        eval!(exec, "20", true);
+        eval!(exec, "30", true);
+
+        assert_eq!(format(eval!(exec, "_")), "30");
+        assert_eq!(format(eval!(exec, "__")), "20");
+        assert_eq!(format(eval!(exec, "___")), "10");
+        assert_eq!(format(eval!(exec, "_1 _2 _3")), "10 20 30");
+        for line in ["____", "_0", "_4"] {
+            let msg = format!("{} not found, there are only 3 results", line);
+            assert_eq!(eval_err(&mut exec, line).to_string(), msg);
+        }
+
+        // Errors and lines that are not remembered do not count.
+        let s = parser::parse("1 + x").unwrap().unwrap();
+        assert!(exec.execute(s, true).is_err());
+        eval!(exec, "40", false);
+        eval!(exec, "_ + 1", true);
+        assert_eq!(format(eval!(exec, "_ _4")), "31 31");
+
+        // Lambdas and let capture the results they use when they are created.
+        eval!(exec, r"f = \x -> x + _", true);
+        eval!(exec, "100", true);
+        assert_eq!(format(eval!(exec, "f 1")), "32");
+        assert_eq!(format(eval!(exec, "let a = 1 in a + _")), "101");
+        assert_eq!(format(eval!(exec, r"let a = 1 in (\y -> y + _4) a")), "32");
+
+        // Named functions see the results at the time they are called.
+        eval!(exec, "fn g x = x + _", true);
+        eval!(exec, "200", true);
+        assert_eq!(format(eval!(exec, "g 1")), "201");
     }
 
     fn format(res: ExecutorResult) -> String {
