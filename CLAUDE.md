@@ -46,7 +46,7 @@ To compare with an older version, build that version and pass it with `-b`.
   don't. These are `TokenKind::Out` / `Atom::Out`, not names, so they can't be assigned.
   Lambdas and `let` copy the results they use into their environment when created; named
   functions look them up when called. Other names starting with `_` (`_a`, `_5a`) are ordinary
-  variables.
+  variables. The interactive prompt shows the number the next result gets: `[5]:`.
 - Evaluation is lazy where possible (`Chain::Iterator`); `collect_point!()` marks where a vector
   gets collected.
 

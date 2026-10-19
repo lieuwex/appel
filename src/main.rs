@@ -185,7 +185,9 @@ fn repl(state: &mut State) -> Result<(), String> {
     }
 
     loop {
-        match rl.readline("> ") {
+        // The number `_n` the result of this line will get, in gray.
+        let prompt = format!("\x1b[90m[{}]:\x1b[0m ", state.exec.next_out());
+        match rl.readline(&prompt) {
             Ok(line) => {
                 state.print_line(&line);
                 if let Some(history) = &history {

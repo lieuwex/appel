@@ -480,6 +480,11 @@ impl<'a> Executor<'a> {
         }
     }
 
+    /// The number `_n` the next result will get.
+    pub fn next_out(&self) -> usize {
+        self.history.len() + 1
+    }
+
     fn get_out(&self, out: Out) -> Result<Chain, Error> {
         // A lambda stores the results it uses in its environment, under the name `_5` etc.
         if let Some(c) = self.get_variable(&out.to_string()) {
