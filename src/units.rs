@@ -48,10 +48,93 @@ impl Dim {
     }
 }
 
-impl fmt::Display for Dim {
-    /// Format as a unit expression of SI base units, e.g. `kg.m^2/s^2`.
+/// One named unit raised to a power, like the `h^-1` in `km/h`.
+#[derive(Clone, Debug, PartialEq)]
+struct Part {
+    name: String,
+    /// The size of one of this unit in SI base units.
+    size: Ratio,
+    exp: i32,
+}
+
+/// A unit a value can be shown in: named units with exponents, so `km/h` is `km^1 h^-1`.
+#[derive(Clone, Debug, PartialEq)]
+pub struct NamedUnit {
+    parts: Vec<Part>,
+    /// The size of one of this unit in SI base units.
+    pub factor: Ratio,
+}
+
+impl NamedUnit {
+    fn new(parts: Vec<Part>) -> Self {
+        let parts: Vec<Part> = parts.into_iter().filter(|p| p.exp != 0).collect();
+        let factor = parts
+            .iter()
+            .map(|p| Ratio::from((&p.size).pow(p.exp)))
+            .product();
+        Self { parts, factor }
+    }
+
+    /// The SI base units of `dim`, e.g. `m/s^2`.
+    fn base(dim: Dim) -> Self {
+        let parts = BASE_UNITS
+            .iter()
+            .zip(dim.0)
+            .map(|(name, exp)| Part {
+                name: name.to_string(),
+                size: Ratio::from(1),
+                exp: exp.into(),
+            })
+            .collect();
+        Self::new(parts)
+    }
+
+    /// Whether this only consists of SI base units.
+    fn is_base(&self) -> bool {
+        self.parts
+            .iter()
+            .all(|p| BASE_UNITS.contains(&p.name.as_str()))
+    }
+
+    /// Multiply by `other` raised to `sign`, which is 1 or -1. Parts with the same name are
+    /// merged, so `km/h * h` is `km`.
+    fn mul(&self, other: &NamedUnit, sign: i32) -> Option<NamedUnit> {
+        let mut parts = self.parts.clone();
+        for part in &other.parts {
+            let exp = part.exp.checked_mul(sign)?;
+            match parts.iter_mut().find(|p| p.name == part.name) {
+                Some(p) => p.exp = p.exp.checked_add(exp)?,
+                None => parts.push(Part {
+                    exp,
+                    ..part.clone()
+                }),
+            }
+        }
+        Some(Self::new(parts))
+    }
+
+    /// Raise to the power `numer / denom`, if every exponent stays an integer.
+    fn pow(&self, numer: i32, denom: i32) -> Option<NamedUnit> {
+        let parts = self
+            .parts
+            .iter()
+            .map(|p| {
+                let exp = p.exp.checked_mul(numer)?;
+                (exp % denom == 0).then(|| Part {
+                    exp: exp / denom,
+                    ..p.clone()
+                })
+            })
+            .collect::<Option<_>>()?;
+        Some(Self::new(parts))
+    }
+}
+
+impl fmt::Display for NamedUnit {
+    /// Format as a unit expression that can be lexed again, e.g. `kg.m^2/s^2`. Every unit with a
+    /// negative exponent gets its own `/`, as `/` only divides by the unit directly after it.
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fn write_base(f: &mut fmt::Formatter<'_>, name: &str, exp: i8) -> fmt::Result {
+        fn write_part(f: &mut fmt::Formatter<'_>, name: &str, exp: i32) -> fmt::Result {
             if exp == 1 {
                 write!(f, "{}", name)
             } else {
@@ -59,42 +142,32 @@ impl fmt::Display for Dim {
             }
         }
 
-        let bases = || BASE_UNITS.iter().zip(self.0);
-        let has_positive = bases().any(|(_, e)| e > 0);
+        let has_positive = self.parts.iter().any(|p| p.exp > 0);
 
         let mut first = true;
-        for (name, exp) in bases().filter(|(_, e)| *e > 0) {
+        for p in self.parts.iter().filter(|p| p.exp > 0) {
             if !first {
                 write!(f, ".")?;
             }
             first = false;
-            write_base(f, name, exp)?;
+            write_part(f, &p.name, p.exp)?;
         }
 
-        for (name, exp) in bases().filter(|(_, e)| *e < 0) {
+        for p in self.parts.iter().filter(|p| p.exp < 0) {
             if has_positive {
                 write!(f, "/")?;
-                write_base(f, name, -exp)?;
+                write_part(f, &p.name, -p.exp)?;
             } else {
                 if !first {
                     write!(f, ".")?;
                 }
                 first = false;
-                write_base(f, name, exp)?;
+                write_part(f, &p.name, p.exp)?;
             }
         }
 
         Ok(())
     }
-}
-
-/// A unit a value can be shown in.
-#[derive(Clone, Debug, PartialEq)]
-pub struct NamedUnit {
-    /// The unit expression as written, e.g. `km/h`.
-    pub name: String,
-    /// The size of one of this unit in SI base units.
-    pub factor: Ratio,
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -120,8 +193,26 @@ impl Unit {
         self.dim.is_dimensionless()
     }
 
+    #[cfg(test)]
     fn from_dim(dim: Dim) -> Self {
         Self { dim, display: None }
+    }
+
+    /// The unit of a computed value. A display unit consisting of only SI base units is dropped,
+    /// so that in a sum the other side's display unit is used.
+    fn computed(dim: Dim, display: Option<NamedUnit>) -> Self {
+        let display = display
+            .filter(|d| !dim.is_dimensionless() && !d.is_base())
+            .map(Rc::new);
+        Self { dim, display }
+    }
+
+    /// The unit values are shown in, SI base units if there is no display unit.
+    fn display_or_base(&self) -> NamedUnit {
+        match &self.display {
+            Some(named) => (**named).clone(),
+            None => NamedUnit::base(self.dim),
+        }
     }
 
     /// The size of one display unit in SI base units.
@@ -181,18 +272,23 @@ impl Unit {
         if self.is_none() {
             return Ok(other.clone());
         }
-        Ok(Unit::from_dim(self.dim.mul(other.dim).ok_or_else(too_large)?))
+        let dim = self.dim.mul(other.dim).ok_or_else(too_large)?;
+        let display = self.display_or_base().mul(&other.display_or_base(), 1);
+        Ok(Unit::computed(dim, display))
     }
 
     pub fn div(&self, other: &Unit) -> Result<Unit, Error> {
         if other.is_none() {
             return Ok(self.clone());
         }
-        Ok(Unit::from_dim(self.dim.div(other.dim).ok_or_else(too_large)?))
+        let dim = self.dim.div(other.dim).ok_or_else(too_large)?;
+        let display = self.display_or_base().mul(&other.display_or_base(), -1);
+        Ok(Unit::computed(dim, display))
     }
 
     /// The unit of a value in this unit raised to the power `exp`. Fractional powers are allowed
-    /// as long as the result has integer exponents, like the square root of an area.
+    /// as long as the result has integer exponents, like the square root of an area. The
+    /// display unit is kept if its exponents stay integers too, so `(2km) ** 2` is in `km^2`.
     pub fn pow(&self, exp: &Ratio) -> Result<Unit, Error> {
         if self.is_none() {
             return Ok(Unit::none());
@@ -209,15 +305,16 @@ impl Unit {
             *e = (i32::from(*e) / denom) as i8;
         }
 
-        Ok(Unit::from_dim(dim))
+        let display = self.display_or_base().pow(numer, denom);
+        Ok(Unit::computed(dim, display))
     }
 }
 
 impl fmt::Display for Unit {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match &self.display {
-            Some(named) => write!(f, "{}", named.name),
-            None => write!(f, "{}", self.dim),
+            Some(named) => write!(f, "{}", named),
+            None => write!(f, "{}", NamedUnit::base(self.dim)),
         }
     }
 }
@@ -319,14 +416,15 @@ fn word_len(s: &[char]) -> usize {
 /// `.` or `/` if a known unit follows, so in `5m/x` only `m` is part of the unit.
 pub fn lex_unit(s: &[char]) -> Option<(Unit, usize)> {
     let mut dim = Dim::default();
-    let mut factor = Ratio::from(1);
+    let mut parts: Vec<Part> = Vec::new();
     let mut divide = false;
     let mut i = 0;
 
     loop {
         let len = word_len(&s[i..]);
         let word: String = s[i..i + len].iter().collect();
-        let (mut d, mut f) = lookup(&word)?;
+        let (mut d, size) = lookup(&word)?;
+        let mut exp = 1;
         i += len;
 
         if s.get(i) == Some(&'^') {
@@ -336,27 +434,34 @@ pub fn lex_unit(s: &[char]) -> Option<(Unit, usize)> {
                 .iter()
                 .take_while(|c| c.is_ascii_digit())
                 .count();
-            let exp: Option<i32> = s[digits_start..digits_start + digits]
+            let exp_digits: Option<i32> = s[digits_start..digits_start + digits]
                 .iter()
                 .collect::<String>()
                 .parse()
                 .ok();
 
             // without digits, `^` isn't part of the unit
-            if let Some(exp) = exp {
-                let exp = if neg { -exp } else { exp };
+            if let Some(e) = exp_digits {
+                exp = if neg { -e } else { e };
                 d = d.pow(exp)?;
-                f = f.pow(exp);
                 i = digits_start + digits;
             }
         }
 
         if divide {
             dim = dim.div(d)?;
-            factor /= f;
+            exp = -exp;
         } else {
             dim = dim.mul(d)?;
-            factor *= f;
+        }
+
+        match parts.iter_mut().find(|p| p.name == word) {
+            Some(p) => p.exp = p.exp.checked_add(exp)?,
+            None => parts.push(Part {
+                name: word,
+                size,
+                exp,
+            }),
         }
 
         let continues = matches!(s.get(i), Some('.' | '/')) && {
@@ -372,8 +477,7 @@ pub fn lex_unit(s: &[char]) -> Option<(Unit, usize)> {
         i += 1;
     }
 
-    let name: String = s[..i].iter().collect();
-    let display = (!dim.is_dimensionless()).then(|| Rc::new(NamedUnit { name, factor }));
+    let display = (!dim.is_dimensionless()).then(|| Rc::new(NamedUnit::new(parts)));
     Some((Unit { dim, display }, i))
 }
 
@@ -422,6 +526,10 @@ mod tests {
         assert_eq!(Unit::from_dim(dim(0, 0, -1, 0, 0)).to_string(), "s^-1");
         assert_eq!(Unit::from_dim(LENGTH).to_string(), "m");
         assert_eq!(unit("km/h").to_string(), "km/h");
+        assert_eq!(unit("m.m").to_string(), "m^2");
+        assert_eq!(unit("m/s/A").to_string(), "m/s/A");
+        assert_eq!(unit("s^-1.A^-2").to_string(), "s^-1.A^-2");
+        assert_eq!(unit("km.m/km").to_string(), "m");
     }
 
     #[test]

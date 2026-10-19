@@ -1315,6 +1315,16 @@ fn bitmask n = rev (2 ** ((iota n)-1))
             ("1kWh to J", "3600000J"),
             ("1kg.m/s^2 to N", "1N"),
             ("4 0 pad (1 2)km", "(0 0 1 2)km"),
+            // display units of computed values
+            ("(2km) ** 2", "4km^2"),
+            ("(100km/h) ** 2", "10000km^2/h^2"),
+            ("(4km^2) ** (1/2)", "2km"),
+            ("1m.m", "1m^2"),
+            ("5km * 2h", "10km.h"),
+            ("5km/h * 2h", "10km"),
+            ("2 / 5km", "(2/5)km^-1"),
+            ("(1m/s/A) * 1A", "1m/s"),
+            ("(2m * 3s / 1s) + 1km", "(503/500)km"),
         ];
         for (line, expected) in cases {
             assert_eq!(format(eval!(exec, line)), expected, "{}", line);
