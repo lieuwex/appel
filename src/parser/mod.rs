@@ -6,6 +6,7 @@
 //!
 //! | construct                                        | associativity | function           |
 //! |--------------------------------------------------|---------------|--------------------|
+//! | unit conversion `e to km/h`                      | left          | [`Parser::expr`]   |
 //! | `\x -> e`, `let x = a in e`, `f // e`, `f \\ e`, `f . e` | prefix | [`Parser::open_ended`] |
 //! | `drop rho unpack pack log , in union mask max min pad` | right   | [`Parser::special_binary`] |
 //! | `== != < <= > >=`                                | left          | [`Parser::comparison`] |
@@ -15,7 +16,7 @@
 //! | `* / %`                                          | left          | [`Parser::product`] |
 //! | `**`                                             | right         | [`Parser::power`]  |
 //! | `+ - ! ?i ?f sin cos tan floor ceil round`       | prefix        | [`Parser::prefix`] |
-//! | indexing `a[i]`                                  | postfix       | [`Parser::postfix`] |
+//! | unit `5km`, indexing `a[i]`                      | postfix       | [`Parser::postfix`] |
 //! | number, variable, `(e)`                          |               | [`Parser::primary`] |
 //!
 //! A prefix construct may start any operand, even when it binds looser than the operator before
@@ -25,6 +26,9 @@
 //! Vector elements are separated by whitespace, and a vector continues only with an element that
 //! starts with a tight operand: `1 -2` is a vector of `1` and `-2`, while `1 - 2` and `1-2` are
 //! subtractions and `1 iota 2` is an error.
+//!
+//! Units are lexed as a single token, see [`crate::units`]. A unit must directly follow a number
+//! or `)`, so `5km` is five kilometres while `5 km` is a vector.
 
 mod lexer;
 
@@ -273,11 +277,20 @@ impl Parser {
     }
 
     fn expr(&mut self) -> Result<Expr> {
-        if self.at_open_ended() {
-            self.open_ended()
+        let mut expr = if self.at_open_ended() {
+            self.open_ended()?
         } else {
-            self.special_binary()
+            self.special_binary()?
+        };
+
+        while self.eat("to") {
+            let TokenKind::Unit(unit) = self.peek().kind.clone() else {
+                return Err(self.unexpected("a unit"));
+            };
+            self.advance();
+            expr = Expr::Convert(Box::new(expr), unit);
         }
+        Ok(expr)
     }
 
     /// Lambda, let binding, fold, scan or map. Their body extends as far to the right as
@@ -388,6 +401,12 @@ impl Parser {
 
     fn postfix(&mut self) -> Result<Expr> {
         let mut expr = self.primary()?;
+        if let TokenKind::Unit(unit) = &self.peek().kind
+            && !self.peek().space_before
+        {
+            expr = Expr::WithUnit(Box::new(expr), unit.clone());
+            self.advance();
+        }
         while self.is("[") && !self.peek().space_before {
             self.advance();
             let index = self.expr()?;
@@ -600,6 +619,24 @@ mod tests {
         assert_eq!(show("1 , (1 2) , 5"), "(1 , ((1 2) , 5))");
         assert_eq!(show("1 , 2 , 3"), "(1 , (2 , 3))");
         assert_eq!(show("a max b min c"), "(a max (b min c))");
+    }
+
+    #[test]
+    fn test_units() {
+        assert_eq!(show("5km"), "5km");
+        assert_eq!(show("5m/s * 10s"), "(5m/s * 10s)");
+        assert_eq!(show("(1 2)km"), "(1 2)km");
+        assert_eq!(show("1km 2km"), "(1km 2km)");
+        assert_eq!(show("5m/x"), "(5m / x)");
+        assert_eq!(show("x + 1m to km/h"), "((x + 1m) to km/h)");
+        assert_eq!(show("x to km to m"), "((x to km) to m)");
+        assert_eq!(show(r"\x -> x to km"), r"(\x -> (x to km))");
+        assert!(!is_ok_some!(parse("5x")));
+        assert!(!is_ok_some!(parse("x to")));
+        assert!(!is_ok_some!(parse("x to y")));
+        assert!(!is_ok_some!(parse("to = 1")));
+        // a unit must directly follow its number
+        assert_eq!(show("5 m"), "(5 m)");
     }
 
     #[test]

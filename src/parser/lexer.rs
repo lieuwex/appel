@@ -4,12 +4,13 @@ use rug::{Integer, ops::Pow};
 
 use super::ParseError;
 use crate::ast::Ratio;
+use crate::units::{Unit, lex_unit};
 
 /// Every word that has a meaning of its own, and therefore can't be used as a variable name.
 pub const KEYWORDS: &[&str] = &[
     "let", "in", "fn", "drop", "rho", "unpack", "pack", "log", "union", "mask", "max", "min",
     "pad", "iota", "abs", "rev", "up", "down", "sgn", "sin", "cos", "tan", "floor", "ceil",
-    "round",
+    "round", "to",
 ];
 
 /// Symbolic operators, longest first so that e.g. `**` is not lexed as two `*`.
@@ -24,6 +25,7 @@ pub enum TokenKind {
     Ident(String),
     Keyword(&'static str),
     Symbol(&'static str),
+    Unit(Unit),
     End,
 }
 
@@ -43,6 +45,7 @@ impl fmt::Display for TokenKind {
             TokenKind::Number(n) => write!(f, "number `{}`", n),
             TokenKind::Ident(s) => write!(f, "`{}`", s),
             TokenKind::Keyword(s) | TokenKind::Symbol(s) => write!(f, "`{}`", s),
+            TokenKind::Unit(u) => write!(f, "unit `{}`", u),
             TokenKind::End => write!(f, "end of input"),
         }
     }
@@ -81,8 +84,35 @@ pub fn tokenize(source: &str) -> Result<Vec<Token>, ParseError> {
             return Ok(tokens);
         };
 
+        // A unit directly follows a number or `)`, as in `5km` or `(1 2)km`, or follows `to`.
+        let unit_allowed = match tokens.last() {
+            Some(Token {
+                kind: TokenKind::Number(_) | TokenKind::Symbol(")"),
+                ..
+            }) => !space_before,
+            Some(Token {
+                kind: TokenKind::Keyword("to"),
+                ..
+            }) => true,
+            _ => false,
+        };
+        let unit = if unit_allowed && c.is_alphabetic() {
+            lex_unit(&chars[i..])
+        } else {
+            None
+        };
+
         let next_is_digit = chars.get(i + 1).is_some_and(|c| c.is_ascii_digit());
-        let kind = if c.is_ascii_digit() || (c == '.' && next_is_digit) {
+        let kind = if let Some((unit, len)) = unit {
+            i += len;
+            TokenKind::Unit(unit)
+        } else if unit_allowed && tokens.last().unwrap().kind == TokenKind::Keyword("to") {
+            return Err(ParseError::new(pos, "expected a unit after `to`"));
+        } else if unit_allowed && c.is_alphabetic() && !matches!(tokens.last().unwrap().kind, TokenKind::Symbol(")")) {
+            let len = chars[i..].iter().take_while(|c| c.is_alphanumeric()).count();
+            let word: String = chars[i..i + len].iter().collect();
+            return Err(ParseError::new(pos, format!("unknown unit `{}`", word)));
+        } else if c.is_ascii_digit() || (c == '.' && next_is_digit) {
             let (n, len) = lex_number(&chars[i..]).map_err(|msg| ParseError::new(pos, msg))?;
             i += len;
             TokenKind::Number(n)

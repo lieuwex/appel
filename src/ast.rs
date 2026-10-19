@@ -2,6 +2,8 @@ use std::fmt;
 
 use rug::{Integer, Rational};
 
+use crate::units::Unit;
+
 pub type Ratio = Rational;
 
 pub trait ToInteger {
@@ -182,6 +184,8 @@ pub enum Expr {
     Index(Box<Expr>, Box<Expr>),       // vector, indices
     Let(String, Box<Expr>, Box<Expr>), // let 0 = 1 in 2
     Lambda(Vec<String>, Box<Expr>),    // params, body
+    WithUnit(Box<Expr>, Unit),         // 5km, (1 2 3)km
+    Convert(Box<Expr>, Unit),          // x to km
 }
 
 impl fmt::Display for Expr {
@@ -216,6 +220,8 @@ impl fmt::Display for Expr {
                 let params = variables.join(" ");
                 (format!("\\{params} -> {body}"), true)
             }
+            Expr::WithUnit(expr, unit) => (format!("{}{}", expr, unit), false),
+            Expr::Convert(expr, unit) => (format!("{} to {}", expr, unit), true),
         };
 
         if paren {

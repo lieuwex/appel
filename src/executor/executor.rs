@@ -8,6 +8,7 @@ use std::time::Instant;
 
 use crate::executor::chain::{Chain, Error, IterShape, ValueIter};
 use crate::parser;
+use crate::units::Unit;
 use crate::{ast::*, collect_point};
 
 use gmp_mpfr_sys::gmp::{bits_per_limb, mpn_get_str, size_t};
@@ -61,13 +62,6 @@ pub struct Executor<'a> {
     variables: HashMap<String, Chain>,
 }
 
-fn expect_scalar(v: ExecutorResult) -> Result<Ratio, Error> {
-    match v.into_iter_shape()?.into_scalar() {
-        Err(_) => Err(Error::from("expected scalar")),
-        Ok(s) => Ok(s),
-    }
-}
-
 fn to_usize_error(rat: &Ratio) -> Result<usize, Error> {
     let int = rat
         .to_integer()
@@ -77,6 +71,7 @@ fn to_usize_error(rat: &Ratio) -> Result<usize, Error> {
 }
 
 fn into_integer_error(iter_shape: IterShape) -> Result<Integer, Error> {
+    iter_shape.expect_no_unit()?;
     let scalar = iter_shape
         .into_scalar()
         .map_err(|_| Error::from("expected scalar, got vector"))?;
@@ -114,9 +109,50 @@ fn call_binary(op: BinOp, a: Chain, b: Chain) -> Result<ExecutorResult, Error> {
     let a = a.into_iter_shape()?;
     let b = b.into_iter_shape()?;
 
+    let unit = match op {
+        BinOp::Add
+        | BinOp::Sub
+        | BinOp::Mod
+        | BinOp::Max
+        | BinOp::Min
+        | BinOp::Concat
+        | BinOp::Union => a.unit.combine(&b.unit)?,
+        BinOp::CompOp(_) | BinOp::In => {
+            a.unit.combine(&b.unit)?;
+            Unit::none()
+        }
+        BinOp::Mul => a.unit.mul(&b.unit)?,
+        BinOp::Div => a.unit.div(&b.unit)?,
+        BinOp::Pow => {
+            b.expect_no_unit()?;
+            if a.unit.is_none() {
+                Unit::none()
+            } else {
+                let exp = b.scalar().ok_or_else(|| {
+                    Error::from("a value with a unit can only be raised to a single power")
+                })?;
+                a.unit.pow(&exp)?
+            }
+        }
+        BinOp::Log
+        | BinOp::LeftShift
+        | BinOp::RightShift
+        | BinOp::Unpack
+        | BinOp::Pack => {
+            a.expect_no_unit()?;
+            b.expect_no_unit()?;
+            Unit::none()
+        }
+        BinOp::Drop | BinOp::Rho | BinOp::Mask | BinOp::Pad => {
+            a.expect_no_unit()?;
+            b.unit.clone()
+        }
+    };
+
     fn apply(
         a: IterShape,
         b: IterShape,
+        unit: Unit,
         f: impl Fn(Rational, Rational) -> Result<Rational, Error> + Clone + 'static,
     ) -> Result<ExecutorResult, Error> {
         if a.len == b.len {
@@ -125,6 +161,7 @@ fn call_binary(op: BinOp, a: Chain, b: Chain) -> Result<ExecutorResult, Error> {
             let matrix = Chain::Iterator(IterShape {
                 iterator: Box::new(values),
                 len: a.len,
+                unit,
             });
             return Ok(matrix.into());
         }
@@ -147,6 +184,7 @@ fn call_binary(op: BinOp, a: Chain, b: Chain) -> Result<ExecutorResult, Error> {
                 }
             })),
             len: non_scalar.len,
+            unit,
         });
 
         Ok(matrix.into())
@@ -164,7 +202,7 @@ fn call_binary(op: BinOp, a: Chain, b: Chain) -> Result<ExecutorResult, Error> {
 
     macro_rules! apply {
         ($f:expr) => {
-            apply(a, b, $f)
+            apply(a, b, unit, $f)
         };
     }
     macro_rules! apply_ok {
@@ -201,6 +239,7 @@ fn call_binary(op: BinOp, a: Chain, b: Chain) -> Result<ExecutorResult, Error> {
             Ok(Chain::Iterator(IterShape {
                 iterator: Box::new(values),
                 len: a.len + b.len,
+                unit,
             })
             .into())
         }
@@ -224,7 +263,12 @@ fn call_binary(op: BinOp, a: Chain, b: Chain) -> Result<ExecutorResult, Error> {
                 (Box::new(b.iterator.take(amount)), amount)
             };
 
-            Ok(Chain::Iterator(IterShape { iterator, len }).into())
+            Ok(Chain::Iterator(IterShape {
+                iterator,
+                len,
+                unit,
+            })
+            .into())
         }
 
         BinOp::Rho => {
@@ -238,6 +282,7 @@ fn call_binary(op: BinOp, a: Chain, b: Chain) -> Result<ExecutorResult, Error> {
             Ok(Chain::Iterator(IterShape {
                 iterator: Box::new(values),
                 len,
+                unit,
             })
             .into())
         }
@@ -329,6 +374,7 @@ fn call_binary(op: BinOp, a: Chain, b: Chain) -> Result<ExecutorResult, Error> {
             Ok(Chain::Iterator(IterShape {
                 iterator: Box::new(values),
                 len: a.len,
+                unit,
             })
             .into())
         }
@@ -345,6 +391,7 @@ fn call_binary(op: BinOp, a: Chain, b: Chain) -> Result<ExecutorResult, Error> {
             Ok(Chain::Iterator(IterShape {
                 len: a.len() + new_values.len(),
                 iterator: Box::new(a.into_iter().map(Result::Ok).chain(new_values)),
+                unit,
             })
             .into())
         }
@@ -357,7 +404,7 @@ fn call_binary(op: BinOp, a: Chain, b: Chain) -> Result<ExecutorResult, Error> {
                 .filter_map_ok(|(a, b)| (!a.is_zero()).then_some(b))
                 .collect();
 
-            Ok(Matrix::make_vector(values?).into())
+            Ok(Matrix::with_unit(values?, unit).into())
         }
 
         BinOp::Max => apply_ok!(|a: Ratio, b: Ratio| a.max(b)),
@@ -369,6 +416,8 @@ fn call_binary(op: BinOp, a: Chain, b: Chain) -> Result<ExecutorResult, Error> {
             };
 
             let new_len = new_len?;
+            // the padding value is given in the unit the vector is shown in
+            let value = value.map(|v| v * unit.factor());
 
             let (new_len, at_start) = if new_len < 0 {
                 (new_len.neg(), false)
@@ -388,7 +437,12 @@ fn call_binary(op: BinOp, a: Chain, b: Chain) -> Result<ExecutorResult, Error> {
                 Box::new(b.iterator.chain(repeated))
             };
 
-            Ok(Chain::make_vector(values, new_len).into())
+            Ok(Chain::Iterator(IterShape {
+                iterator: values,
+                len: new_len,
+                unit,
+            })
+            .into())
         }
     }
 }
@@ -485,26 +539,44 @@ impl<'a> Executor<'a> {
     }
 
     fn execute_unary(&self, op: UnOp, expr: &Expr) -> Result<ExecutorResult, Error> {
-        let res = self.execute_expr(expr)?;
+        let res = self.execute_expr(expr)?.into_iter_shape()?;
+
+        let unit = match op {
+            UnOp::Id
+            | UnOp::Neg
+            | UnOp::Abs
+            | UnOp::Rev
+            | UnOp::RollFloat
+            | UnOp::Floor
+            | UnOp::Ceil
+            | UnOp::Round => res.unit.clone(),
+            UnOp::Rho | UnOp::Up | UnOp::Down | UnOp::Sign => Unit::none(),
+            UnOp::Not | UnOp::RollInt | UnOp::Sin | UnOp::Cos | UnOp::Tan | UnOp::Iota => {
+                res.expect_no_unit()?;
+                Unit::none()
+            }
+        };
 
         fn for_all(
-            res: ExecutorResult,
+            res: IterShape,
+            unit: Unit,
             f: impl Fn(Rational) -> Result<Rational, Error> + Clone + 'static,
         ) -> Result<ExecutorResult, Error> {
-            let IterShape { iterator, len } = res.into_iter_shape()?;
+            let IterShape { iterator, len, .. } = res;
 
             let values = iterator.map(move |v| f(v?));
 
             let new = Chain::Iterator(IterShape {
                 iterator: Box::new(values),
                 len,
+                unit,
             });
             Ok(new.into())
         }
 
         macro_rules! for_all {
             ($f:expr) => {
-                for_all(res, $f)
+                for_all(res, unit, $f)
             };
         }
         macro_rules! for_all_ok {
@@ -514,7 +586,7 @@ impl<'a> Executor<'a> {
         }
 
         match op {
-            UnOp::Id => Ok(res),
+            UnOp::Id => Ok(res.into()),
             UnOp::Neg => for_all_ok!(|x: Ratio| x.neg()),
             UnOp::Not => for_all_ok!(|x: Ratio| {
                 if x.is_zero() {
@@ -546,9 +618,20 @@ impl<'a> Executor<'a> {
                     .ok_or_else(|| Error::from("couldn't convert f64 to ratio"))
             }),
 
-            UnOp::Floor => for_all_ok!(|x: Ratio| x.floor()),
-            UnOp::Ceil => for_all_ok!(|x: Ratio| x.ceil()),
-            UnOp::Round => for_all_ok!(|x: Ratio| x.round()),
+            // rounding happens in the unit the value is shown in, so `floor 1.5km` is `1 km`
+            UnOp::Floor | UnOp::Ceil | UnOp::Round => {
+                let factor = unit.factor();
+                for_all!(move |x: Ratio| {
+                    let x = x / &factor;
+                    let x = match op {
+                        UnOp::Floor => x.floor(),
+                        UnOp::Ceil => x.ceil(),
+                        UnOp::Round => x.round(),
+                        _ => unreachable!(),
+                    };
+                    Ok(x * &factor)
+                })
+            }
             UnOp::Abs => for_all_ok!(|x: Ratio| x.abs()),
             UnOp::Sin | UnOp::Cos | UnOp::Tan => for_all!(move |x: Ratio| {
                 let f = to_float(x);
@@ -564,7 +647,9 @@ impl<'a> Executor<'a> {
             UnOp::Sign => for_all_ok!(|x: Ratio| x.signum()),
 
             UnOp::Iota => {
-                let s = expect_scalar(res)?;
+                let s = res
+                    .into_scalar()
+                    .map_err(|_| Error::from("expected scalar"))?;
                 let upper = to_usize_error(&s)?;
 
                 let it = (1..=upper).map(|v| Ok(Ratio::from(v)));
@@ -574,7 +659,6 @@ impl<'a> Executor<'a> {
             }
 
             UnOp::Rho => {
-                let res = res.into_iter_shape()?;
                 Ok(Chain::make_scalar(Rational::from(res.len)).into())
             }
 
@@ -585,12 +669,13 @@ impl<'a> Executor<'a> {
                 Ok(Chain::Iterator(IterShape {
                     len,
                     iterator: Box::new(values),
+                    unit,
                 })
                 .into())
             }
 
             UnOp::Up | UnOp::Down => {
-                let IterShape { iterator, len } = res.into_iter_shape()?;
+                let IterShape { iterator, len, .. } = res;
                 let values: Result<Vec<(usize, Ratio)>, Error> = iterator
                     .enumerate()
                     .map(|(i, x)| x.map(|x| (i, x)))
@@ -608,6 +693,7 @@ impl<'a> Executor<'a> {
                 Ok(Chain::Iterator(IterShape {
                     iterator: Box::new(values),
                     len,
+                    unit,
                 })
                 .into())
             }
@@ -638,32 +724,34 @@ impl<'a> Executor<'a> {
             is_fold: bool,
             f: impl Fn(Value, Value) -> Result<ExecutorResult, Error>,
         ) -> Result<ExecutorResult, Error> {
+            let unit = iter_shape.unit;
+            let mut it = iter_shape.iterator;
+            let first = it.next().unwrap()?;
+
             if is_fold {
-                let mut it = iter_shape.iterator;
-                let first = it.next().unwrap();
-
-                // fold
-                it.try_fold(
-                    ExecutorResult::Chain(Chain::make_scalar(first?)),
-                    |acc, item| f(acc.try_into()?, item?.into()),
-                )
+                it.try_fold(ExecutorResult::from(Value::quantity(first, &unit)), |acc, item| {
+                    f(acc.try_into()?, Value::quantity(item?, &unit))
+                })
             } else {
-                let mut it = iter_shape.iterator;
                 let mut accum = Vec::with_capacity(iter_shape.len);
-                accum.push(it.next().unwrap().unwrap());
+                accum.push(first);
 
-                loop {
-                    let item = match it.next() {
-                        None => break Ok(Matrix::make_vector(accum).into()),
-                        Some(i) => i?,
-                    };
+                for item in it {
+                    let prev = Value::quantity(accum.last().unwrap().clone(), &unit);
+                    let curr = Value::quantity(item?, &unit);
 
-                    let prev = Value::from(accum.last().unwrap().clone());
-                    let curr = Value::from(item);
-
-                    let res = f(prev, curr)?;
-                    accum.push(expect_scalar(res)?)
+                    let res = f(prev, curr)?.into_iter_shape()?;
+                    // all values of a vector have the same unit
+                    if res.unit.dim != unit.dim {
+                        unit.combine(&res.unit)?;
+                    }
+                    let res = res
+                        .into_scalar()
+                        .map_err(|_| Error::from("expected scalar"))?;
+                    accum.push(res);
                 }
+
+                Ok(Matrix::with_unit(accum, unit).into())
             }
         }
         macro_rules! apply {
@@ -704,27 +792,31 @@ impl<'a> Executor<'a> {
                 )));
             }
 
-            let chunks: Result<Vec<_>, Error> = iter_shape
-                .iterator
-                .chunks(chunk_size)
-                .into_iter()
-                .map(|args| -> Result<_, Error> {
-                    let args: Result<Vec<Value>, _> =
-                        args.into_iter().map(|v| v.map(Value::Scalar)).collect();
+            let arg_unit = iter_shape.unit;
+            let mut values = Vec::new();
+            let mut unit: Option<Unit> = None;
 
-                    let args = args?;
-                    assert_eq!(args.len(), chunk_size);
+            for args in &iter_shape.iterator.chunks(chunk_size) {
+                let args: Vec<Value> = args
+                    .map(|v| v.map(|v| Value::quantity(v, &arg_unit)))
+                    .collect::<Result<_, _>>()?;
+                assert_eq!(args.len(), chunk_size);
 
-                    let res = f(args)?;
-                    Ok(Chain::try_from(res)?.into_iter_shape()?.iterator)
-                })
-                .flatten_ok()
-                .map(|res| Ok(res??))
-                .collect();
+                let res = f(args)?.into_iter_shape()?;
+                // all values of a vector have the same unit
+                unit = Some(match unit {
+                    None => res.unit,
+                    Some(unit) => unit.combine(&res.unit)?,
+                });
+
+                for v in res.iterator {
+                    values.push(v?);
+                }
+            }
 
             collect_point!();
 
-            let m = Matrix::make_vector(chunks?);
+            let m = Matrix::with_unit(values, unit.unwrap_or_default());
             Ok(m.into())
         }
         macro_rules! apply {
@@ -783,15 +875,31 @@ impl<'a> Executor<'a> {
                             return Ok(expressions.next().unwrap().into());
                         }
 
-                        let values = expressions.map(|v| match v {
-                            Value::Matrix(m) => m
-                                .into_scalar()
-                                .ok_or_else(|| Error::from("nested matrices aren't allowed")),
-                            Value::Scalar(r) => Ok(r),
-                            Value::Function(_) => Err(Error::from("expected scalar, got function")),
-                        });
+                        let mut unit: Option<Unit> = None;
+                        let mut values = Vec::with_capacity(len);
+                        for v in expressions {
+                            let (value, value_unit) = match v {
+                                Value::Matrix(m) => {
+                                    let value_unit = m.unit.clone();
+                                    let value = m.into_scalar().ok_or_else(|| {
+                                        Error::from("nested matrices aren't allowed")
+                                    })?;
+                                    (value, value_unit)
+                                }
+                                Value::Scalar(r) => (r, Unit::none()),
+                                Value::Function(_) => {
+                                    return Err(Error::from("expected scalar, got function"));
+                                }
+                            };
 
-                        Ok(Chain::make_vector(Box::new(values), len).into())
+                            unit = Some(match unit {
+                                None => value_unit,
+                                Some(unit) => unit.combine(&value_unit)?,
+                            });
+                            values.push(value);
+                        }
+
+                        Ok(Matrix::with_unit(values, unit.unwrap_or_default()).into())
                     }
                 }
             }
@@ -804,6 +912,7 @@ impl<'a> Executor<'a> {
 
             Expr::Index(m, indices) => {
                 let indices = self.execute_expr(indices)?.into_iter_shape()?;
+                indices.expect_no_unit()?;
                 let mut outputs = vec![Rational::new(); indices.len]; // REVIEW
                 let mut indices: BinaryHeap<_> = indices
                     .iterator
@@ -834,7 +943,7 @@ impl<'a> Executor<'a> {
                 if let Some(&Reverse((src, _))) = indices.peek() {
                     Err(format!("index {} out of bounds", src).into())
                 } else {
-                    Ok(Matrix::make_vector(outputs).into())
+                    Ok(Matrix::with_unit(outputs, m.unit).into())
                 }
             }
 
@@ -856,6 +965,33 @@ impl<'a> Executor<'a> {
                 env: self.get_all_variables(),
             })
             .into()),
+
+            Expr::WithUnit(expr, unit) => {
+                let res = self.execute_expr(expr)?.into_iter_shape()?;
+                res.expect_no_unit()?;
+
+                let factor = unit.factor();
+                Ok(Chain::Iterator(IterShape {
+                    iterator: Box::new(res.iterator.map(move |v| Ok(v? * &factor))),
+                    len: res.len,
+                    unit: unit.clone(),
+                })
+                .into())
+            }
+
+            Expr::Convert(expr, unit) => {
+                let res = self.execute_expr(expr)?.into_iter_shape()?;
+                if res.unit.dim != unit.dim {
+                    return Err(format!("can't convert {} to {}", res.unit.describe(), unit).into());
+                }
+
+                // values are stored in SI units, so only the display unit changes
+                Ok(Chain::Iterator(IterShape {
+                    unit: unit.clone(),
+                    ..res
+                })
+                .into())
+            }
         }
     }
 
@@ -911,9 +1047,11 @@ impl<'a> Executor<'a> {
                     };
                     let res = self.execute(parsed, false)?;
 
-                    let s = Matrix::try_from(res)?
+                    let m = Matrix::try_from(res)?;
+                    let factor = m.unit.factor();
+                    let s = m
                         .iter()
-                        .map(|x| x.to_f64())
+                        .map(|x| Ratio::from(x / &factor).to_f64())
                         .enumerate()
                         .map(|(i, val)| {
                             if i == 0 {
@@ -924,8 +1062,7 @@ impl<'a> Executor<'a> {
                         })
                         .collect::<Vec<String>>()
                         .concat();
-
-                    Ok(ExecutorResult::Info(s))
+                    Ok(ExecutorResult::Info(m.unit.attach(&s, m.len())))
                 }
 
                 "s" | "set" => {
@@ -984,6 +1121,7 @@ impl<'a> Executor<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::executor::matrix::Formatter;
 
     macro_rules! eval {
         ($exec:expr, $line:expr, $remember:expr) => {{
@@ -1141,6 +1279,62 @@ fn bitmask n = rev (2 ** ((iota n)-1))
         let res = res.into_iter_shape().unwrap().into_scalar().unwrap();
 
         assert_eq!(res, 5);
+    }
+
+    fn format(res: ExecutorResult) -> String {
+        match res {
+            ExecutorResult::Chain(c) => c.format(Formatter::Ratio).unwrap(),
+            _ => panic!("expected a value"),
+        }
+    }
+
+    fn eval_err(exec: &mut Executor, line: &str) -> Error {
+        let s = parser::parse(line).unwrap().unwrap();
+        exec.execute(s, false).err().unwrap()
+    }
+
+    #[test]
+    fn test_units() {
+        let mut exec = Executor::new();
+
+        let cases = [
+            ("5m/s * 10s", "50m"),
+            ("5000m to km", "5km"),
+            ("1km + 500m", "(3/2)km"),
+            ("100km / 2h to km/h", "50km/h"),
+            ("1km / 1m", "1000"),
+            ("1km 500m", "(1 1/2)km"),
+            ("+//(1 2 3)km", "6km"),
+            ("*//(1 2 3)m", "6m^3"),
+            (r"+\\(1 2 3)km", "(1 3 6)km"),
+            ("floor 1.5km", "1km"),
+            ("(4m^2) ** (1/2)", "2m"),
+            ("(1 2 3)km[2]", "3km"),
+            ("1km == 1000m", "1"),
+            ("3.5in to cm", "(889/100)cm"),
+            ("1kWh to J", "3600000J"),
+            ("1kg.m/s^2 to N", "1N"),
+            ("4 0 pad (1 2)km", "(0 0 1 2)km"),
+        ];
+        for (line, expected) in cases {
+            assert_eq!(format(eval!(exec, line)), expected, "{}", line);
+        }
+
+        // the output can be parsed again
+        for line in ["(1 2 3)km", "1.5km", "-3/2m/s", "5m^2.kg/s^2"] {
+            let once = format(eval!(exec, line));
+            assert_eq!(format(eval!(exec, &once)), once, "{}", line);
+        }
+
+        eval!(exec, "fn f a b = a * b");
+        assert_eq!(format(eval!(exec, "f . (1 2 3 4)m")), "(2 12)m^2");
+
+        assert_eq!(eval_err(&mut exec, "5m + 3s"), "unit mismatch: m and s");
+        assert_eq!(eval_err(&mut exec, "5m + 1"), "unit mismatch: m and a plain number");
+        assert_eq!(eval_err(&mut exec, "5m to kg"), "can't convert m to kg");
+        assert!(eval_err(&mut exec, "iota 3m").contains("plain number"));
+        assert!(eval_err(&mut exec, "(2m) ** (1/2)").contains("power"));
+        assert!(eval_err(&mut exec, r"*\\(1 2)m").contains("unit mismatch"));
     }
 
     #[test]

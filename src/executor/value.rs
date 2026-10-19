@@ -1,4 +1,5 @@
 use crate::ast::Ratio;
+use crate::units::Unit;
 
 use super::function::Function;
 use super::matrix::Matrix;
@@ -8,6 +9,17 @@ pub enum Value {
     Matrix(Matrix),
     Scalar(Ratio),
     Function(Function),
+}
+
+impl Value {
+    /// A single number in the given unit.
+    pub fn quantity(r: Ratio, unit: &Unit) -> Self {
+        if unit.is_none() {
+            Value::Scalar(r)
+        } else {
+            Value::Matrix(Matrix::with_unit(vec![r], unit.clone()))
+        }
+    }
 }
 
 impl From<Matrix> for Value {

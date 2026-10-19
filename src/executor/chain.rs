@@ -2,6 +2,7 @@ use std::convert::TryFrom;
 
 use crate::ast::Ratio;
 use crate::collect_point;
+use crate::units::Unit;
 
 use super::{
     matrix::{Formatter, Matrix},
@@ -22,9 +23,14 @@ impl<T> ValueIter for T where T: Iterator<Item = Result<Ratio, Error>> + Clone {
 pub struct IterShape {
     pub iterator: Box<dyn ValueIter>,
     pub len: usize,
+    pub unit: Unit,
 }
 
 impl IterShape {
+    pub fn expect_no_unit(&self) -> Result<(), Error> {
+        self.unit.expect_none()
+    }
+
     pub fn is_scalar(&self) -> bool {
         self.len == 1
     }
@@ -48,7 +54,10 @@ impl IterShape {
 
 impl std::fmt::Debug for IterShape {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("IterShape").field("len", &self.len).finish()
+        f.debug_struct("IterShape")
+            .field("len", &self.len)
+            .field("unit", &self.unit)
+            .finish()
     }
 }
 
@@ -61,7 +70,7 @@ impl TryFrom<IterShape> for Matrix {
         let values: Result<Vec<Ratio>, Error> = value.iterator.collect();
         let values = values?;
 
-        Ok(Matrix::make_vector(values))
+        Ok(Matrix::with_unit(values, value.unit))
     }
 }
 
@@ -89,7 +98,11 @@ impl Chain {
     }
 
     pub fn make_vector(iterator: Box<dyn ValueIter>, len: usize) -> Self {
-        Self::Iterator(IterShape { iterator, len })
+        Self::Iterator(IterShape {
+            iterator,
+            len,
+            unit: Unit::none(),
+        })
     }
 
     pub fn into_iter_shape(self) -> Result<IterShape, Error> {
@@ -100,9 +113,11 @@ impl Chain {
             Chain::Value(Value::Scalar(r)) => Ok(IterShape {
                 iterator: Box::new(std::iter::once(Ok(r))),
                 len: 1,
+                unit: Unit::none(),
             }),
             Chain::Value(Value::Matrix(m)) => Ok(IterShape {
                 len: m.len(),
+                unit: m.unit.clone(),
                 iterator: Box::new(m.into_iter().map(Ok)),
             }),
         }
@@ -112,20 +127,33 @@ impl Chain {
         fn format_iter(
             fmt: Formatter,
             iterator: impl Iterator<Item = Result<Ratio, Error>>,
+            unit: Unit,
         ) -> Result<String, Error> {
-            iterator
-                .map(|val| Ok(fmt.apply(&val?)))
+            let factor = unit.display.as_ref().map(|named| &named.factor);
+            let mut count = 0;
+            let values: String = iterator
+                .inspect(|_| count += 1)
+                .map(|val| {
+                    let val = val?;
+                    Ok(match factor {
+                        Some(factor) => fmt.apply(&Ratio::from(&val / factor)),
+                        None => fmt.apply(&val),
+                    })
+                })
                 .intersperse(Ok(" ".to_string()))
-                .collect()
+                .collect::<Result<_, Error>>()?;
+
+            Ok(unit.attach(&values, count))
         }
 
         match self {
             Chain::Value(Value::Function(f)) => Ok(format!("{}", f)),
             Chain::Value(Value::Scalar(r)) => Ok(format!("{}", r)),
             Chain::Value(Value::Matrix(m)) => {
-                format_iter(fmt, m.into_iter().map(Result::<_, Error>::Ok))
+                let unit = m.unit.clone();
+                format_iter(fmt, m.into_iter().map(Result::<_, Error>::Ok), unit)
             }
-            Chain::Iterator(IterShape { iterator, .. }) => format_iter(fmt, iterator),
+            Chain::Iterator(IterShape { iterator, unit, .. }) => format_iter(fmt, iterator, unit),
         }
     }
 }
@@ -136,10 +164,13 @@ impl TryFrom<Chain> for Value {
     fn try_from(value: Chain) -> Result<Self, Self::Error> {
         match value {
             Chain::Value(v) => Ok(v),
-            Chain::Iterator(iter_shape) => match iter_shape.into_scalar() {
-                Ok(s) => Ok(Value::Scalar(s)),
-                Err(iter_shape) => Matrix::try_from(iter_shape).map(Value::Matrix),
-            },
+            Chain::Iterator(iter_shape) if iter_shape.unit.is_none() => {
+                match iter_shape.into_scalar() {
+                    Ok(s) => Ok(Value::Scalar(s)),
+                    Err(iter_shape) => Matrix::try_from(iter_shape).map(Value::Matrix),
+                }
+            }
+            Chain::Iterator(iter_shape) => Matrix::try_from(iter_shape).map(Value::Matrix),
         }
     }
 }

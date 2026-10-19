@@ -2,6 +2,7 @@ use super::chain::Error;
 use super::result::ExecutorResult;
 use super::value::Value;
 use crate::ast::*;
+use crate::units::Unit;
 
 use std::convert::TryFrom;
 
@@ -29,15 +30,22 @@ impl Formatter {
 }
 
 #[derive(Clone, Debug)]
-pub struct Matrix(Vec<Ratio>);
+pub struct Matrix {
+    values: Vec<Ratio>,
+    pub unit: Unit,
+}
 
 impl Matrix {
     pub fn make_vector(values: Vec<Ratio>) -> Self {
-        Self(values)
+        Self::with_unit(values, Unit::none())
+    }
+
+    pub fn with_unit(values: Vec<Ratio>, unit: Unit) -> Self {
+        Self { values, unit }
     }
 
     pub fn len(&self) -> usize {
-        self.0.len()
+        self.values.len()
     }
 
     pub fn is_scalar(&self) -> bool {
@@ -45,29 +53,29 @@ impl Matrix {
     }
 
     pub fn scalar(&self) -> Option<&Ratio> {
-        self.is_scalar().then(|| &self.0[0])
+        self.is_scalar().then(|| &self.values[0])
     }
 
     pub fn into_scalar(self) -> Option<Ratio> {
-        self.is_scalar().then(|| self.0.into_iter().nth(0).unwrap())
+        self.is_scalar().then(|| self.values.into_iter().nth(0).unwrap())
     }
 
     pub fn get_at(&self, i: usize) -> Option<&Ratio> {
-        self.0.get(i)
+        self.values.get(i)
     }
     pub fn take_at(self, i: usize) -> Option<Ratio> {
-        self.0.into_iter().nth(i)
+        self.values.into_iter().nth(i)
     }
 
     pub fn get_multiple(&self, indices: &[usize]) -> Option<Vec<Ratio>> {
-        indices.iter().map(|i| self.0.get(*i).cloned()).collect()
+        indices.iter().map(|i| self.values.get(*i).cloned()).collect()
     }
 
     pub fn iter(&self) -> std::slice::Iter<Ratio> {
-        self.0.iter()
+        self.values.iter()
     }
     pub fn iter_mut(&mut self) -> std::slice::IterMut<Ratio> {
-        self.0.iter_mut()
+        self.values.iter_mut()
     }
 }
 
@@ -76,7 +84,7 @@ impl IntoIterator for Matrix {
     type IntoIter = std::vec::IntoIter<Self::Item>;
 
     fn into_iter(self) -> Self::IntoIter {
-        self.0.into_iter()
+        self.values.into_iter()
     }
 }
 
