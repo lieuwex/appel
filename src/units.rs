@@ -189,6 +189,12 @@ impl Unit {
         Self::default()
     }
 
+    /// Seconds, the unit of duration literals like `6:05`.
+    pub fn seconds() -> Self {
+        let (unit, _) = lex_unit(&['s']).unwrap();
+        unit
+    }
+
     pub fn is_none(&self) -> bool {
         self.dim.is_dimensionless()
     }

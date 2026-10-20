@@ -35,6 +35,7 @@ mod lexer;
 use std::fmt;
 
 use crate::ast::*;
+use crate::units::Unit;
 use lexer::{Token, TokenKind, tokenize};
 
 #[derive(Clone, Debug, PartialEq)]
@@ -250,7 +251,10 @@ impl Parser {
         }
 
         let after_primary = match self.peek().kind {
-            TokenKind::Number(_) | TokenKind::Ident(_) | TokenKind::Out(_) => 1,
+            TokenKind::Number(_)
+            | TokenKind::Duration(_)
+            | TokenKind::Ident(_)
+            | TokenKind::Out(_) => 1,
             TokenKind::Symbol("(") => {
                 let mut depth = 0;
                 let mut offset = 0;
@@ -359,6 +363,7 @@ impl Parser {
 
         match token.kind {
             TokenKind::Number(_)
+            | TokenKind::Duration(_)
             | TokenKind::Ident(_)
             | TokenKind::Out(_)
             | TokenKind::Symbol("(") => true,
@@ -425,6 +430,11 @@ impl Parser {
                 let n = n.clone();
                 self.advance();
                 Ok(Expr::Atom(Atom::Rat(n)))
+            }
+            TokenKind::Duration(n) => {
+                let n = Expr::Atom(Atom::Rat(n.clone()));
+                self.advance();
+                Ok(Expr::WithUnit(Box::new(n), Unit::seconds()))
             }
             TokenKind::Ident(_) => Ok(Expr::Atom(Atom::Ref(self.ident()?))),
             TokenKind::Out(o) => {
@@ -649,6 +659,17 @@ mod tests {
         assert!(!is_ok_some!(parse("to = 1")));
         // a unit must directly follow its number
         assert_eq!(show("5 m"), "(5 m)");
+    }
+
+    #[test]
+    fn test_duration() {
+        assert_eq!(show("06:05"), "365s");
+        assert_eq!(show("1:30 2:00"), "(90s 120s)");
+        assert_eq!(show("1:30 + 1:00:00"), "(90s + 3600s)");
+        assert_eq!(show("-1:30"), "-90s");
+        assert_eq!(show("1:30 to min"), "(90s to min)");
+        assert!(!is_ok_some!(parse("1:30km")));
+        assert!(!is_ok_some!(parse("1:3")));
     }
 
     #[test]

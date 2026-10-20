@@ -3,6 +3,7 @@
 mod ast;
 mod executor;
 mod parser;
+mod time;
 mod units;
 
 use std::fs;

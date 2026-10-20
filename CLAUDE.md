@@ -33,6 +33,7 @@ To compare with an older version, build that version and pass it with `-b`.
 - `src/executor/chain.rs` — `Chain` (a value or a lazy `IterShape` iterator) and output formatting.
 - `src/executor/matrix.rs` — `Matrix` (a collected vector) and `Formatter`.
 - `src/units.rs` — units: dimensions, the unit table, lexing unit expressions.
+- `src/time.rs` — time literals (durations for now; dates and times of day planned).
 - `src/executor/num_type.rs`, `values.rs`, `src/grammar.pest` — untracked leftovers, not compiled.
 
 ## Language notes
@@ -107,6 +108,15 @@ Operator rules (in `call_binary` / `execute_unary`):
   is in m, `1m.s` stays `m.s`.
 - When one side has no display unit it is treated as SI base units when combining: `1km * x`
   with `x` in m² gives `km.m^2`.
+
+Durations:
+
+- `m:ss` and `h:mm:ss` are duration literals in seconds: `6:05` is `365s`, `1:02:03` is
+  `3723s`. The first field takes any number of digits, the others exactly two and below 60; the
+  seconds may have a fraction (`1:02.5`). They are one `TokenKind::Duration` token that the parser
+  turns into `WithUnit(n, s)`, so they print as seconds and convert with `to`.
+- A bare `hh:mm` is a duration, so times of day and dates will need their own syntax (see the
+  date & time issue on GitHub).
 
 Output:
 

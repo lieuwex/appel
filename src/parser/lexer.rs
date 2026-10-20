@@ -4,6 +4,7 @@ use rug::{Integer, ops::Pow};
 
 use super::ParseError;
 use crate::ast::{Out, Ratio};
+use crate::time::{lex_duration, starts_duration};
 use crate::units::{Unit, lex_unit};
 
 /// Every word that has a meaning of its own, and therefore can't be used as a variable name.
@@ -22,6 +23,8 @@ const SYMBOLS: &[&str] = &[
 #[derive(Clone, Debug, PartialEq)]
 pub enum TokenKind {
     Number(Ratio),
+    /// A duration literal like `6:05`, in seconds.
+    Duration(Ratio),
     Ident(String),
     Out(Out),
     Keyword(&'static str),
@@ -44,6 +47,7 @@ impl fmt::Display for TokenKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             TokenKind::Number(n) => write!(f, "number `{}`", n),
+            TokenKind::Duration(n) => write!(f, "duration of {}s", n),
             TokenKind::Ident(s) => write!(f, "`{}`", s),
             TokenKind::Out(o) => write!(f, "`{}`", o),
             TokenKind::Keyword(s) | TokenKind::Symbol(s) => write!(f, "`{}`", s),
@@ -114,6 +118,10 @@ pub fn tokenize(source: &str) -> Result<Vec<Token>, ParseError> {
             let len = chars[i..].iter().take_while(|c| c.is_alphanumeric()).count();
             let word: String = chars[i..i + len].iter().collect();
             return Err(ParseError::new(pos, format!("unknown unit `{}`", word)));
+        } else if starts_duration(&chars[i..]) {
+            let (n, len) = lex_duration(&chars[i..]).map_err(|msg| ParseError::new(pos, msg))?;
+            i += len;
+            TokenKind::Duration(n)
         } else if c.is_ascii_digit() || (c == '.' && next_is_digit) {
             let (n, len) = lex_number(&chars[i..]).map_err(|msg| ParseError::new(pos, msg))?;
             i += len;

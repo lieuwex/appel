@@ -1431,6 +1431,13 @@ fn bitmask n = rev (2 ** ((iota n)-1))
             ("2 / 5km", "(2/5)km^-1"),
             ("(1m/s/A) * 1A", "1m/s"),
             ("(2m * 3s / 1s) + 1km", "(503/500)km"),
+            // durations
+            ("06:05", "365s"),
+            ("1:02:03 to h", "(1241/1200)h"),
+            ("1:30 to min", "(3/2)min"),
+            ("1:30 + 1min", "150s"),
+            ("10km / 0:50:00 to km/h", "12km/h"),
+            ("+//1:30 2:00 0:45", "255s"),
         ];
         for (line, expected) in cases {
             assert_eq!(format(eval!(exec, line)), expected, "{}", line);
