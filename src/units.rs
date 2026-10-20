@@ -13,6 +13,7 @@ use std::rc::Rc;
 use rug::{Integer, ops::Pow};
 
 use crate::ast::Ratio;
+use crate::time::Clock;
 
 /// Symbols of the SI base units, in the order of the exponents in [`Dim`].
 const BASE_UNITS: [&str; 7] = ["m", "kg", "s", "A", "K", "mol", "cd"];
@@ -63,6 +64,8 @@ pub struct NamedUnit {
     parts: Vec<Part>,
     /// The size of one of this unit in SI base units.
     pub factor: Ratio,
+    /// Show values as a clock time instead, like `6:05`. Only for seconds.
+    pub clock: Option<Clock>,
 }
 
 impl NamedUnit {
@@ -72,7 +75,11 @@ impl NamedUnit {
             .iter()
             .map(|p| Ratio::from((&p.size).pow(p.exp)))
             .product();
-        Self { parts, factor }
+        Self {
+            parts,
+            factor,
+            clock: None,
+        }
     }
 
     /// The SI base units of `dim`, e.g. `m/s^2`.
@@ -91,7 +98,8 @@ impl NamedUnit {
 
     /// Whether this only consists of SI base units.
     fn is_base(&self) -> bool {
-        self.parts
+        self.clock.is_none()
+            && self.parts
             .iter()
             .all(|p| BASE_UNITS.contains(&p.name.as_str()))
     }
@@ -140,6 +148,10 @@ impl fmt::Display for NamedUnit {
             } else {
                 write!(f, "{}^{}", name, exp)
             }
+        }
+
+        if let Some(clock) = self.clock {
+            return write!(f, "{}", clock);
         }
 
         let has_positive = self.parts.iter().any(|p| p.exp > 0);
@@ -193,6 +205,21 @@ impl Unit {
     pub fn seconds() -> Self {
         let (unit, _) = lex_unit(&['s']).unwrap();
         unit
+    }
+
+    /// Seconds shown as a clock time, the unit of duration literals like `6:05`.
+    pub fn clock(clock: Clock) -> Self {
+        let mut named = NamedUnit::base(TIME);
+        named.clock = Some(clock);
+        Self {
+            dim: TIME,
+            display: Some(Rc::new(named)),
+        }
+    }
+
+    /// The clock format values are shown in, if any.
+    pub fn clock_format(&self) -> Option<Clock> {
+        self.display.as_ref().and_then(|named| named.clock)
     }
 
     pub fn is_none(&self) -> bool {

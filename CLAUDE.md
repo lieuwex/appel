@@ -114,7 +114,15 @@ Durations:
 - `m:ss` and `h:mm:ss` are duration literals in seconds: `6:05` is `365s`, `1:02:03` is
   `3723s`. The first field takes any number of digits, the others exactly two and below 60; the
   seconds may have a fraction (`1:02.5`). They are one `TokenKind::Duration` token that the parser
-  turns into `WithUnit(n, s)`, so they print as seconds and convert with `to`.
+  turns into `WithUnit(n, Unit::clock(..))`.
+- The clock format is a display unit: `NamedUnit::clock` (`Clock::MinSec` or `HourMinSec`) on
+  seconds. So the usual display rules apply: `1:30 + 1min` is `2:30`, `2 * 6:05` is `12:10`,
+  `6:05 to s` is `365s`, `3723s to m:ss` is `1:02:03`, and `6:05 * 2km` drops it (`730s.km`).
+  `to` accepts `m:ss`, `mm:ss`, `h:mm:ss`, `hh:mm:ss`.
+- `m:ss` switches to `h:mm:ss` from an hour on; `h:mm:ss` (and literals written with three
+  fields) always show hours: `0:01:30`.
+- Fractional seconds are shown exactly when the decimals end (`1:02.5`). Otherwise the ratio
+  formatter falls back to seconds, `(181/3)s`, and the float formatters round: `1:00.33`.
 - A bare `hh:mm` is a duration, so times of day and dates will need their own syntax (see the
   date & time issue on GitHub).
 

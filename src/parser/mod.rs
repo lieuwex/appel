@@ -252,7 +252,7 @@ impl Parser {
 
         let after_primary = match self.peek().kind {
             TokenKind::Number(_)
-            | TokenKind::Duration(_)
+            | TokenKind::Duration(..)
             | TokenKind::Ident(_)
             | TokenKind::Out(_) => 1,
             TokenKind::Symbol("(") => {
@@ -363,7 +363,7 @@ impl Parser {
 
         match token.kind {
             TokenKind::Number(_)
-            | TokenKind::Duration(_)
+            | TokenKind::Duration(..)
             | TokenKind::Ident(_)
             | TokenKind::Out(_)
             | TokenKind::Symbol("(") => true,
@@ -431,10 +431,10 @@ impl Parser {
                 self.advance();
                 Ok(Expr::Atom(Atom::Rat(n)))
             }
-            TokenKind::Duration(n) => {
-                let n = Expr::Atom(Atom::Rat(n.clone()));
+            TokenKind::Duration(n, clock) => {
+                let expr = Expr::WithUnit(Box::new(Expr::Atom(Atom::Rat(n.clone()))), Unit::clock(*clock));
                 self.advance();
-                Ok(Expr::WithUnit(Box::new(n), Unit::seconds()))
+                Ok(expr)
             }
             TokenKind::Ident(_) => Ok(Expr::Atom(Atom::Ref(self.ident()?))),
             TokenKind::Out(o) => {
@@ -663,11 +663,16 @@ mod tests {
 
     #[test]
     fn test_duration() {
-        assert_eq!(show("06:05"), "365s");
-        assert_eq!(show("1:30 2:00"), "(90s 120s)");
-        assert_eq!(show("1:30 + 1:00:00"), "(90s + 3600s)");
-        assert_eq!(show("-1:30"), "-90s");
-        assert_eq!(show("1:30 to min"), "(90s to min)");
+        assert_eq!(show("06:05"), "6:05");
+        assert_eq!(show("1:30 2:00"), "(1:30 2:00)");
+        assert_eq!(show("1:30 + 1:00:00"), "(1:30 + 1:00:00)");
+        assert_eq!(show("0:01:30"), "0:01:30");
+        assert_eq!(show("-1:30"), "-1:30");
+        assert_eq!(show("1:30 to min"), "(1:30 to min)");
+        assert_eq!(show("x to m:ss"), "(x to m:ss)");
+        assert_eq!(show("x to hh:mm:ss"), "(x to h:mm:ss)");
+        assert!(!is_ok_some!(parse("x to m:s")));
+        assert!(!is_ok_some!(parse("5m:ss")));
         assert!(!is_ok_some!(parse("1:30km")));
         assert!(!is_ok_some!(parse("1:3")));
     }

@@ -7,7 +7,9 @@ use std::ops::Neg;
 use std::time::Instant;
 
 use crate::executor::chain::{Chain, Error, IterShape, ValueIter};
+use crate::executor::matrix::Formatter;
 use crate::parser;
+use crate::time;
 use crate::units::Unit;
 use crate::{ast::*, collect_point};
 
@@ -1118,6 +1120,11 @@ impl<'a> Executor<'a> {
                     let res = self.execute(parsed, false)?;
 
                     let m = Matrix::try_from(res)?;
+                    if let Some(clock) = m.unit.clock_format() {
+                        let fmt = Formatter::Float(None);
+                        let s = m.iter().map(|x| time::format_clock(clock, x, fmt)).join(" ");
+                        return Ok(ExecutorResult::Info(s));
+                    }
                     let factor = m.unit.factor();
                     let s = m
                         .iter()
@@ -1432,19 +1439,33 @@ fn bitmask n = rev (2 ** ((iota n)-1))
             ("(1m/s/A) * 1A", "1m/s"),
             ("(2m * 3s / 1s) + 1km", "(503/500)km"),
             // durations
-            ("06:05", "365s"),
+            ("06:05", "6:05"),
+            ("0:01:30", "0:01:30"),
             ("1:02:03 to h", "(1241/1200)h"),
             ("1:30 to min", "(3/2)min"),
-            ("1:30 + 1min", "150s"),
+            ("1:30 to s", "90s"),
+            ("1:30 + 1min", "2:30"),
+            ("1min + 1:30", "(5/2)min"),
+            ("2 * 6:05", "12:10"),
+            ("59:00 + 1:00", "1:00:00"),
+            ("3723s to m:ss", "1:02:03"),
+            ("90s to h:mm:ss", "0:01:30"),
+            ("1:00 - 1:30", "-0:30"),
+            ("1:30 2:00 -0:45", "1:30 2:00 -0:45"),
+            ("1:02.5", "1:02.5"),
+            ("1:00 + (1/3)s", "(181/3)s"),
+            ("1:00 / 1s", "60"),
+            ("6:05 * 2km", "730s.km"),
+            ("floor 1:02.5", "1:02"),
             ("10km / 0:50:00 to km/h", "12km/h"),
-            ("+//1:30 2:00 0:45", "255s"),
+            ("+//1:30 2:00 0:45", "4:15"),
         ];
         for (line, expected) in cases {
             assert_eq!(format(eval!(exec, line)), expected, "{}", line);
         }
 
         // the output can be parsed again
-        for line in ["(1 2 3)km", "1.5km", "-3/2m/s", "5m^2.kg/s^2"] {
+        for line in ["(1 2 3)km", "1.5km", "-3/2m/s", "5m^2.kg/s^2", "1:30 -1:00:00.5", "1:00 + (1/3)s"] {
             let once = format(eval!(exec, line));
             assert_eq!(format(eval!(exec, &once)), once, "{}", line);
         }

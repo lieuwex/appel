@@ -4,10 +4,111 @@
 //! and `1:02:03` is 1 hour, 2 minutes and 3 seconds. They are lexed as a single token and
 //! evaluate to a number of seconds, so `6:05 to min` works like any other unit conversion.
 //! Dates and times of day (with time zones) are meant to live here too later.
+//!
+//! A [`Clock`] is a way to show a value in seconds as a clock time. It is part of the display
+//! unit, so a duration literal is shown as a clock time again, and `x to m:ss` converts to one.
+
+use std::fmt;
 
 use rug::{Integer, ops::Pow};
 
 use crate::ast::Ratio;
+use crate::executor::matrix::Formatter;
+use crate::units::Unit;
+
+/// How to show a duration as a clock time.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Clock {
+    /// `m:ss`, or `h:mm:ss` from an hour on.
+    MinSec,
+    /// Always `h:mm:ss`.
+    HourMinSec,
+}
+
+impl fmt::Display for Clock {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Clock::MinSec => write!(f, "m:ss"),
+            Clock::HourMinSec => write!(f, "h:mm:ss"),
+        }
+    }
+}
+
+/// Lex a clock format after `to` at the start of `s`: `m:ss`, `mm:ss`, `h:mm:ss` or `hh:mm:ss`.
+pub fn lex_clock(s: &[char]) -> Option<(Clock, usize)> {
+    let formats = [
+        ("hh:mm:ss", Clock::HourMinSec),
+        ("h:mm:ss", Clock::HourMinSec),
+        ("mm:ss", Clock::MinSec),
+        ("m:ss", Clock::MinSec),
+    ];
+    formats.into_iter().find_map(|(text, clock)| {
+        let len = text.len();
+        let matches = s.iter().copied().take(len).eq(text.chars())
+            && !s.get(len).is_some_and(|c| c.is_alphanumeric() || *c == '_');
+        matches.then_some((clock, len))
+    })
+}
+
+/// Format `seconds` as a clock time, such that it can be parsed again: `6:05`, `1:02:03` or
+/// `-1:02.5`. With [`Formatter::Ratio`] values whose seconds have no exact decimal form, like
+/// 62⅓ seconds, are shown in seconds instead: `(187/3)s`. The float formatters round them.
+pub fn format_clock(clock: Clock, seconds: &Ratio, fmt: Formatter) -> String {
+    let Some((whole, frac)) = split_seconds(&Ratio::from(seconds.abs_ref()), fmt) else {
+        return Unit::seconds().attach(&fmt.apply(seconds), 1);
+    };
+
+    let (minutes, secs) = whole.div_rem(Integer::from(60));
+    let (hours, minutes) = minutes.div_rem(Integer::from(60));
+
+    let sign = if *seconds < 0 { "-" } else { "" };
+    let frac = if frac.is_empty() { frac } else { format!(".{}", frac) };
+    if clock == Clock::HourMinSec || hours != 0 {
+        format!("{sign}{hours}:{minutes:0>2}:{secs:0>2}{frac}")
+    } else {
+        format!("{sign}{minutes}:{secs:0>2}{frac}")
+    }
+}
+
+/// Split a non-negative number of seconds into whole seconds and the digits after the decimal
+/// point, rounded as `fmt` says. `None` if the digits don't end and `fmt` doesn't round.
+fn split_seconds(seconds: &Ratio, fmt: Formatter) -> Option<(Integer, String)> {
+    let whole = Integer::from(seconds.floor_ref());
+    let frac = Ratio::from(seconds - &whole);
+
+    match fmt {
+        _ if frac == 0 => Some((whole, String::new())),
+        Formatter::Ratio => {
+            // a fraction has a finite decimal form if its denominator only has factors 2 and 5
+            let mut denom = frac.denom().clone();
+            let twos = denom.remove_factor_mut(&Integer::from(2));
+            let fives = denom.remove_factor_mut(&Integer::from(5));
+            if denom != 1 {
+                return None;
+            }
+            let digits = twos.max(fives);
+            let scaled = Ratio::from(&frac * Integer::from(10).pow(digits));
+            Some((whole, format!("{:0>1$}", scaled.numer(), digits as usize)))
+        }
+        Formatter::Float(Some(precision)) => {
+            // round the whole value, so that 59.999 seconds becomes a full minute
+            let scale = Integer::from(10).pow(precision as u32);
+            let rounded = Integer::from(Ratio::from(seconds * &scale).round_ref());
+            let (whole, frac) = rounded.div_rem(scale);
+            let frac = if precision == 0 { String::new() } else { format!("{:0>1$}", frac, precision) };
+            Some((whole, frac))
+        }
+        Formatter::Float(None) => {
+            let frac = frac.to_f64();
+            if frac >= 1.0 {
+                return Some((whole + 1, String::new()));
+            }
+            let digits = frac.to_string();
+            let digits = digits.strip_prefix("0.").unwrap_or("");
+            Some((whole, digits.to_string()))
+        }
+    }
+}
 
 /// Whether `s` starts with a duration literal: digits directly followed by `:` and a digit.
 pub fn starts_duration(s: &[char]) -> bool {
@@ -16,10 +117,10 @@ pub fn starts_duration(s: &[char]) -> bool {
 }
 
 /// Lex a duration literal `m:ss` or `h:mm:ss` at the start of `s`, returning its length in
-/// seconds and its length in characters. The first field may have any number of digits, the
+/// seconds, the clock format it was written in and its length in characters. The first field may have any number of digits, the
 /// others need exactly two and must be below 60. The seconds may have a fractional part, as in
 /// `1:02.5`.
-pub fn lex_duration(s: &[char]) -> Result<(Ratio, usize), String> {
+pub fn lex_duration(s: &[char]) -> Result<(Ratio, Clock, usize), String> {
     let mut fields: Vec<&[char]> = Vec::new();
     let mut i = 0;
     loop {
@@ -72,7 +173,8 @@ pub fn lex_duration(s: &[char]) -> Result<(Ratio, usize), String> {
         seconds += Ratio::from((numer, denom));
     }
 
-    Ok((seconds, i))
+    let clock = if fields.len() == 3 { Clock::HourMinSec } else { Clock::MinSec };
+    Ok((seconds, clock, i))
 }
 
 #[cfg(test)]
@@ -82,7 +184,7 @@ mod tests {
     fn duration(s: &str) -> Result<Ratio, String> {
         let chars: Vec<char> = s.chars().collect();
         assert!(starts_duration(&chars), "{}", s);
-        let (n, len) = lex_duration(&chars)?;
+        let (n, _, len) = lex_duration(&chars)?;
         assert_eq!(len, chars.len(), "{} not fully lexed", s);
         Ok(n)
     }
@@ -106,6 +208,38 @@ mod tests {
         assert!(duration("1:00x").is_err());
         assert!(duration("1:00.5.5").is_err());
         assert!(duration("99999999999999999999:00").is_err());
+    }
+
+    #[test]
+    fn test_format_clock() {
+        let ratio = |clock, n: Ratio| format_clock(clock, &n, Formatter::Ratio);
+        assert_eq!(ratio(Clock::MinSec, Ratio::from(365)), "6:05");
+        assert_eq!(ratio(Clock::MinSec, Ratio::from(0)), "0:00");
+        assert_eq!(ratio(Clock::MinSec, Ratio::from(3599)), "59:59");
+        assert_eq!(ratio(Clock::MinSec, Ratio::from(3600)), "1:00:00");
+        assert_eq!(ratio(Clock::MinSec, Ratio::from(360000)), "100:00:00");
+        assert_eq!(ratio(Clock::HourMinSec, Ratio::from(365)), "0:06:05");
+        assert_eq!(ratio(Clock::MinSec, Ratio::from(-90)), "-1:30");
+        assert_eq!(ratio(Clock::MinSec, Ratio::from((125, 2))), "1:02.5");
+        assert_eq!(ratio(Clock::MinSec, Ratio::from((-1, 100))), "-0:00.01");
+        assert_eq!(ratio(Clock::MinSec, Ratio::from((187, 3))), "(187/3)s");
+
+        let float = |n: Ratio, precision| format_clock(Clock::MinSec, &n, Formatter::Float(precision));
+        assert_eq!(float(Ratio::from((187, 3)), Some(2)), "1:02.33");
+        assert_eq!(float(Ratio::from((187, 3)), Some(0)), "1:02");
+        assert_eq!(float(Ratio::from((59999, 1000)), Some(2)), "1:00.00");
+        assert_eq!(float(Ratio::from((125, 2)), None), "1:02.5");
+        assert!(float(Ratio::from((187, 3)), None).starts_with("1:02.333"));
+    }
+
+    #[test]
+    fn test_lex_clock() {
+        let lex = |s: &str| lex_clock(&s.chars().collect::<Vec<_>>());
+        assert_eq!(lex("m:ss"), Some((Clock::MinSec, 4)));
+        assert_eq!(lex("mm:ss"), Some((Clock::MinSec, 5)));
+        assert_eq!(lex("h:mm:ss + 1"), Some((Clock::HourMinSec, 7)));
+        assert_eq!(lex("m"), None);
+        assert_eq!(lex("m:ssx"), None);
     }
 
     #[test]

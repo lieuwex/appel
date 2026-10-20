@@ -2,6 +2,7 @@ use std::convert::TryFrom;
 
 use crate::ast::Ratio;
 use crate::collect_point;
+use crate::time;
 use crate::units::Unit;
 
 use super::{
@@ -129,6 +130,13 @@ impl Chain {
             iterator: impl Iterator<Item = Result<Ratio, Error>>,
             unit: Unit,
         ) -> Result<String, Error> {
+            if let Some(clock) = unit.clock_format() {
+                return iterator
+                    .map(|val| Ok(time::format_clock(clock, &val?, fmt)))
+                    .intersperse(Ok(" ".to_string()))
+                    .collect();
+            }
+
             let factor = unit.display.as_ref().map(|named| &named.factor);
             let mut count = 0;
             let values: String = iterator

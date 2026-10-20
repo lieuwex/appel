@@ -4,7 +4,7 @@ use rug::{Integer, ops::Pow};
 
 use super::ParseError;
 use crate::ast::{Out, Ratio};
-use crate::time::{lex_duration, starts_duration};
+use crate::time::{Clock, lex_clock, lex_duration, starts_duration};
 use crate::units::{Unit, lex_unit};
 
 /// Every word that has a meaning of its own, and therefore can't be used as a variable name.
@@ -23,8 +23,8 @@ const SYMBOLS: &[&str] = &[
 #[derive(Clone, Debug, PartialEq)]
 pub enum TokenKind {
     Number(Ratio),
-    /// A duration literal like `6:05`, in seconds.
-    Duration(Ratio),
+    /// A duration literal like `6:05`, in seconds, with the clock format it was written in.
+    Duration(Ratio, Clock),
     Ident(String),
     Out(Out),
     Keyword(&'static str),
@@ -47,7 +47,7 @@ impl fmt::Display for TokenKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             TokenKind::Number(n) => write!(f, "number `{}`", n),
-            TokenKind::Duration(n) => write!(f, "duration of {}s", n),
+            TokenKind::Duration(n, _) => write!(f, "duration of {}s", n),
             TokenKind::Ident(s) => write!(f, "`{}`", s),
             TokenKind::Out(o) => write!(f, "`{}`", o),
             TokenKind::Keyword(s) | TokenKind::Symbol(s) => write!(f, "`{}`", s),
@@ -102,7 +102,10 @@ pub fn tokenize(source: &str) -> Result<Vec<Token>, ParseError> {
             }) => true,
             _ => false,
         };
-        let unit = if unit_allowed && c.is_alphabetic() {
+        let after_to = matches!(tokens.last(), Some(t) if t.kind == TokenKind::Keyword("to"));
+        let unit = if after_to && let Some((clock, len)) = lex_clock(&chars[i..]) {
+            Some((Unit::clock(clock), len))
+        } else if unit_allowed && c.is_alphabetic() {
             lex_unit(&chars[i..])
         } else {
             None
@@ -112,16 +115,17 @@ pub fn tokenize(source: &str) -> Result<Vec<Token>, ParseError> {
         let kind = if let Some((unit, len)) = unit {
             i += len;
             TokenKind::Unit(unit)
-        } else if unit_allowed && tokens.last().unwrap().kind == TokenKind::Keyword("to") {
+        } else if after_to {
             return Err(ParseError::new(pos, "expected a unit after `to`"));
         } else if unit_allowed && c.is_alphabetic() && !matches!(tokens.last().unwrap().kind, TokenKind::Symbol(")")) {
             let len = chars[i..].iter().take_while(|c| c.is_alphanumeric()).count();
             let word: String = chars[i..i + len].iter().collect();
             return Err(ParseError::new(pos, format!("unknown unit `{}`", word)));
         } else if starts_duration(&chars[i..]) {
-            let (n, len) = lex_duration(&chars[i..]).map_err(|msg| ParseError::new(pos, msg))?;
+            let (n, clock, len) =
+                lex_duration(&chars[i..]).map_err(|msg| ParseError::new(pos, msg))?;
             i += len;
-            TokenKind::Duration(n)
+            TokenKind::Duration(n, clock)
         } else if c.is_ascii_digit() || (c == '.' && next_is_digit) {
             let (n, len) = lex_number(&chars[i..]).map_err(|msg| ParseError::new(pos, msg))?;
             i += len;

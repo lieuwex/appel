@@ -2,6 +2,8 @@ use std::fmt;
 
 use rug::{Integer, Rational};
 
+use crate::executor::matrix::Formatter;
+use crate::time;
 use crate::units::Unit;
 
 pub type Ratio = Rational;
@@ -240,7 +242,12 @@ impl fmt::Display for Expr {
                 let params = variables.join(" ");
                 (format!("\\{params} -> {body}"), true)
             }
-            Expr::WithUnit(expr, unit) => (format!("{}{}", expr, unit), false),
+            Expr::WithUnit(expr, unit) => match (&**expr, unit.clock_format()) {
+                (Expr::Atom(Atom::Rat(n)), Some(clock)) => {
+                    (time::format_clock(clock, n, Formatter::Ratio), false)
+                }
+                _ => (format!("{}{}", expr, unit), false),
+            },
             Expr::Convert(expr, unit) => (format!("{} to {}", expr, unit), true),
         };
 
